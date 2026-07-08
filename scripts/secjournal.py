@@ -196,7 +196,9 @@ def load_feeds() -> list[dict]:
 ALL_FEEDS: list[dict] = load_feeds()
 
 THEMES: dict[str, dict] = {
+    "Trending":{"icon": "🔥", "title": "Trending Now (multi-source)","color": "#ff4757", "bg": "#2c0808"},
     "CVE":     {"icon": "🔴", "title": "CVE & Vulnérabilités",      "color": "#e74c3c", "bg": "#2c0f0f"},
+    "Threat":  {"icon": "🎯", "title": "Threat Intelligence",       "color": "#f39c12", "bg": "#2c1f08"},
     "Exploit": {"icon": "💥", "title": "Exploits & PoC",            "color": "#e67e22", "bg": "#2c1a08"},
     "News-EN": {"icon": "🌐", "title": "Security News (EN)",        "color": "#3498db", "bg": "#0a1a2c"},
     "News-FR": {"icon": "🇫🇷", "title": "Actualités Sécurité (FR)", "color": "#2ecc71", "bg": "#0a2c10"},
@@ -204,7 +206,9 @@ THEMES: dict[str, dict] = {
     "CTF":     {"icon": "🏁", "title": "CTF & Labs",                "color": "#1abc9c", "bg": "#082c28"},
 }
 
-THEME_ORDER = ["CVE", "Exploit", "News-EN", "News-FR", "Outils", "CTF"]
+# Trending est calcule, pas fetche : il apparait en tete de journal quand des articles
+# multi-sources se recoupent sur une meme CVE dans la fenetre temporelle.
+THEME_ORDER = ["Trending", "CVE", "Threat", "Exploit", "News-EN", "News-FR", "Outils", "CTF"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DATA MODEL
@@ -226,6 +230,9 @@ class Article:
     score:     int      = 0
     cmd:       str      = ""
     summary_fr:str      = ""
+    summary_en:str      = ""   # traduction anglaise (auto, best-effort)
+    weight:    float    = 1.0  # multiplicateur source (>1 = premium)
+    heat:      float    = 0.0  # score de fraicheur / severite / KEV (rempli plus tard)
 
     @property
     def uid(self) -> str:
@@ -411,10 +418,15 @@ def fetch_feed(feed: dict, cutoff: datetime) -> list[Article]:
         return []
     ftype = feed.get("ftype", "rss")
     if ftype == "json_kev":
-        return parse_kev_json(raw, feed["label"], cutoff)
-    if ftype == "gh_md":
-        return parse_gh_md(raw, feed["label"], feed["theme"])
-    return parse_rss(raw, feed["label"], feed["theme"], cutoff)
+        arts = parse_kev_json(raw, feed["label"], cutoff)
+    elif ftype == "gh_md":
+        arts = parse_gh_md(raw, feed["label"], feed["theme"])
+    else:
+        arts = parse_rss(raw, feed["label"], feed["theme"], cutoff)
+    w = float(feed.get("weight", 1.0))
+    for a in arts:
+        a.weight = w
+    return arts
 
 
 # ── Load rss_watcher items (Ollama-enriched) ─────────────────────────────────
@@ -462,6 +474,169 @@ def load_rss_watcher_items(cutoff: datetime) -> list[Article]:
         except Exception:
             pass
     return arts
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HEAT SCORE + TRENDING (cross-source correlation)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def compute_heat(art: Article) -> float:
+    """Score de chaleur : fraicheur * severite * KEV * exploit * poids source.
+
+    Un article publie il y a 1h avec KEV/critical exploite pesera >> qu'un
+    article de 5 jours sans severite. Utilise pour promouvoir le "gold now".
+    """
+    now   = datetime.now(timezone.utc)
+    hours = max(0.5, (now - art.published).total_seconds() / 3600.0)
+    fresh = 1.0 / (1.0 + hours / 12.0)     # 1.0 @ 0h · ~0.5 @ 12h · ~0.15 @ 72h
+    sev   = {"critical": 2.5, "high": 1.8, "medium": 1.2, "low": 0.7}.get(
+        (art.severity or "").lower(), 1.0)
+    kev   = 2.2 if art.kev else 1.0
+    expl  = 1.6 if art.exploit else 1.0
+    return round(fresh * sev * kev * expl * float(art.weight or 1.0), 3)
+
+
+def build_trending(by_theme: dict, min_sources: int = 2, top_k: int = 30) -> list[Article]:
+    """Detecte les articles trending :
+      1. CVEs mentionnees par >= min_sources feeds distincts dans la fenetre.
+      2. Articles KEV publies dans les 24 dernieres heures.
+      3. Top heat_score parmi les 24h les plus recentes.
+    Retourne une liste dedupliquee, triee par heat_score decroissant."""
+    all_arts: list[Article] = [a for arts in by_theme.values() for a in arts]
+    if not all_arts:
+        return []
+
+    # 1. CVE -> {sources}
+    cve_sources: dict[str, set[str]] = {}
+    cve_arts:    dict[str, list[Article]] = {}
+    for a in all_arts:
+        for cve in (a.cves or []):
+            cve = cve.upper()
+            cve_sources.setdefault(cve, set()).add(a.source)
+            cve_arts.setdefault(cve, []).append(a)
+    hot_cves = {c for c, s in cve_sources.items() if len(s) >= min_sources}
+
+    now = datetime.now(timezone.utc)
+    trending: dict[str, Article] = {}   # uid -> article
+
+    # 1a. CVEs multi-source
+    for cve in hot_cves:
+        # garder l'article le plus "chaud" pour la CVE
+        best = max(cve_arts[cve], key=compute_heat)
+        trending[best.uid] = best
+
+    # 2. KEV frais (< 24h)
+    for a in all_arts:
+        if a.kev and (now - a.published).total_seconds() < 86400:
+            trending[a.uid] = a
+
+    # 3. top-heat parmi les < 24h
+    fresh = [a for a in all_arts if (now - a.published).total_seconds() < 86400]
+    fresh.sort(key=compute_heat, reverse=True)
+    for a in fresh[:top_k]:
+        trending.setdefault(a.uid, a)
+
+    out = list(trending.values())
+    out.sort(key=compute_heat, reverse=True)
+    return out[:top_k]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TRANSLATION EN — backend stack : Ollama > deep_translator > passthrough
+# ══════════════════════════════════════════════════════════════════════════════
+
+TRANSLATE_CACHE_PATH = OUT_BASE / "knowledge" / "rss" / "translation_cache.jsonl"
+_TR_CACHE: dict[str, str] = {}
+_TR_BACKEND: Optional[str] = None   # rempli au premier appel
+
+
+def _load_translation_cache() -> None:
+    global _TR_CACHE
+    if _TR_CACHE:
+        return
+    if TRANSLATE_CACHE_PATH.is_file():
+        try:
+            for line in TRANSLATE_CACHE_PATH.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                r = json.loads(line)
+                if r.get("k") and r.get("v"):
+                    _TR_CACHE[r["k"]] = r["v"]
+        except Exception:
+            pass
+
+
+def _save_translation_cache() -> None:
+    if not _TR_CACHE:
+        return
+    try:
+        TRANSLATE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with TRANSLATE_CACHE_PATH.open("w", encoding="utf-8") as f:
+            for k, v in _TR_CACHE.items():
+                f.write(json.dumps({"k": k, "v": v}, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"[!] cache traduction non ecrit ({e})", file=sys.stderr)
+
+
+def _try_ollama(text: str, timeout: int = 20) -> Optional[str]:
+    """Traduit via Ollama local si OLLAMA_HOST joignable. Modele : env
+    OLLAMA_TRANSLATE_MODEL (defaut : qwen2.5:3b, leger et bilingue)."""
+    import os
+    host  = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    model = os.environ.get("OLLAMA_TRANSLATE_MODEL", "qwen2.5:3b")
+    prompt = ("Translate the following text to concise, natural English. "
+              "Return ONLY the translation, no preamble, no quotes.\n\n" + text)
+    body = json.dumps({"model": model, "prompt": prompt, "stream": False,
+                       "options": {"temperature": 0.1, "num_predict": 400}}).encode()
+    try:
+        req = urllib.request.Request(host + "/api/generate", data=body,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", errors="ignore"))
+        out = (data.get("response") or "").strip()
+        return out or None
+    except Exception:
+        return None
+
+
+def _try_deep_translator(text: str) -> Optional[str]:
+    """Traduit via deep_translator (GoogleTranslator, pas de cle API)."""
+    try:
+        from deep_translator import GoogleTranslator
+        return GoogleTranslator(source="auto", target="en").translate(text[:4900])
+    except Exception:
+        return None
+
+
+def translate_to_en(text: str, max_len: int = 900) -> str:
+    """Traduit vers EN avec cache + fallback silencieux.
+    Retourne "" si aucun backend dispo ou texte vide."""
+    global _TR_BACKEND
+    text = (text or "").strip()
+    if not text:
+        return ""
+    text = text[:max_len]
+    key  = hashlib.md5(text.encode("utf-8")).hexdigest()
+    _load_translation_cache()
+    if key in _TR_CACHE:
+        return _TR_CACHE[key]
+
+    # essaie dans l'ordre, memorise le premier qui marche pour eviter des
+    # retries inutiles ensuite
+    tried = [_TR_BACKEND] if _TR_BACKEND else ["ollama", "deep_translator"]
+    for backend in tried + (["ollama", "deep_translator"] if not _TR_BACKEND else []):
+        if backend == "ollama":
+            out = _try_ollama(text)
+        elif backend == "deep_translator":
+            out = _try_deep_translator(text)
+        else:
+            continue
+        if out:
+            _TR_BACKEND = backend
+            _TR_CACHE[key] = out
+            return out
+    # aucun backend
+    return ""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -541,6 +716,7 @@ a{color:inherit;text-decoration:none}a:hover{text-decoration:underline}
 .cm .src{color:#f0883e;font-weight:500}
 .cs{font-size:.82rem;color:#c9d1d9;margin-bottom:.3rem}
 .cs-fr{font-size:.82rem;color:#79c0ff;font-style:italic;margin-bottom:.3rem}
+.cs-en{font-size:.82rem;color:#a5d6a7;font-style:italic;margin-bottom:.3rem}
 .ce{font-size:.78rem;background:#1c2128;color:#ffa657;border-radius:4px;padding:.25rem .55rem;font-family:monospace;margin-bottom:.3rem;overflow-x:auto}
 .ctags{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.25rem}
 .ctag{background:#21262d;border-radius:4px;padding:.05rem .4rem;font-size:.72rem;color:#8b949e}
@@ -598,6 +774,8 @@ def _build_card(art: Article) -> str:
     if art.summary_fr:
         sfr = art.summary_fr if isinstance(art.summary_fr, str) else " ".join(art.summary_fr)
         body += f'<div class="cs-fr">🇫🇷 {escape(sfr)}</div>'
+    if art.summary_en:
+        body += f'<div class="cs-en">🇬🇧 {escape(art.summary_en)}</div>'
     if art.summary:
         body += f'<div class="cs">{escape(art.summary)}</div>'
     if art.cmd:
@@ -745,6 +923,9 @@ def render_json(by_theme: dict, args, total: int) -> str:
                 "date":     a.date_fmt,
                 "severity": a.severity,
                 "summary":  a.summary[:200] if a.summary else "",
+                "summary_en": (a.summary_en or "")[:200],
+                "summary_fr": (a.summary_fr or "")[:200],
+                "heat":     round(float(a.heat or 0.0), 3),
                 "kev":      a.kev,
                 "exploit":  a.exploit,
                 "cves":     a.cves[:3],
@@ -766,7 +947,10 @@ def _art_to_record(a: Article, theme: str) -> dict:
         "uid": a.uid, "cat": theme, "title": a.title, "url": a.url,
         "source": a.source, "date": a.date_fmt, "published": a.published.isoformat(),
         "severity": a.severity, "summary": (a.summary or "")[:400],
-        "summary_fr": (a.summary_fr or "")[:400], "kev": a.kev, "exploit": a.exploit,
+        "summary_fr": (a.summary_fr or "")[:400],
+        "summary_en": (a.summary_en or "")[:400],
+        "heat": float(a.heat or 0.0),
+        "kev": a.kev, "exploit": a.exploit,
         "cves": a.cves[:5], "tags": a.tags[:8],
     }
 
@@ -834,7 +1018,7 @@ def search_journal(query: str, limit: int = 50, theme: str = "", records: list[d
     for r in recs:
         if theme and r.get("cat") != theme:
             continue
-        hay = " ".join(str(r.get(k, "")) for k in ("title", "source", "summary", "summary_fr", "cat")).lower()
+        hay = " ".join(str(r.get(k, "")) for k in ("title", "source", "summary", "summary_fr", "summary_en", "cat")).lower()
         hay += " " + " ".join(map(str, r.get("cves", []) or [])).lower()
         hay += " " + " ".join(map(str, r.get("tags", []) or [])).lower()
         if all(t in hay for t in terms):
@@ -979,6 +1163,14 @@ def main() -> None:
                     help="mode recherche : interroge le store et sort du JSON (pour agents/scripts)")
     ap.add_argument("--limit",       type=int, default=50,
                     help="nombre max de résultats pour --search (défaut: 50)")
+    ap.add_argument("--translate",   dest="translate", action="store_true", default=True,
+                    help="auto-traduit les résumés en EN via Ollama/deep_translator (défaut: on)")
+    ap.add_argument("--no-translate",dest="translate", action="store_false",
+                    help="désactive la traduction EN (plus rapide, moins de trafic)")
+    ap.add_argument("--translate-max", type=int, default=80,
+                    help="max articles traduits par run (défaut: 80 — évite de saturer le backend)")
+    ap.add_argument("--no-trending", dest="trending", action="store_false", default=True,
+                    help="désactive la section Trending Now")
     args = ap.parse_args()
 
     if args.search:
@@ -1045,6 +1237,48 @@ def main() -> None:
         if bucket is not None and len(bucket) < args.max:
             if theme_filter is None or art.theme in theme_filter:
                 bucket.append(art)
+
+    # ── Heat score sur tous les articles retenus ─────────────────────────────
+    for arts in by_theme.values():
+        for a in arts:
+            a.heat = compute_heat(a)
+
+    # ── Trending Now (multi-source CVE + KEV frais + top-heat 24h) ───────────
+    if args.trending and "Trending" in by_theme:
+        by_theme["Trending"] = build_trending(by_theme, min_sources=2, top_k=30)
+        n_trend = len(by_theme["Trending"])
+        if n_trend:
+            print(f"{c('bold','🔥')} Trending: {n_trend} articles multi-source / KEV / top-heat")
+
+    # ── Traduction EN (best-effort, silencieux si aucun backend) ─────────────
+    if args.translate:
+        _load_translation_cache()
+        # priorite : Trending > Threat > CVE > Exploit > News-FR (pour anglicisation) > reste
+        priority = ["Trending", "Threat", "CVE", "Exploit", "News-FR", "News-EN", "Outils", "CTF"]
+        candidates: list[Article] = []
+        for t in priority:
+            for a in by_theme.get(t, []):
+                if not a.summary_en:
+                    src = a.summary_fr or a.summary
+                    if src:
+                        candidates.append(a)
+        candidates = candidates[:args.translate_max]
+        if candidates:
+            print(f"{c('cyan','🌐')} traduction EN : {len(candidates)} articles a traiter…")
+            n_ok_tr = 0
+            for a in candidates:
+                src = a.summary_fr or a.summary
+                out = translate_to_en(src)
+                if out:
+                    a.summary_en = out
+                    n_ok_tr += 1
+                elif _TR_BACKEND is None:
+                    # aucun backend dispo → arreter tout de suite
+                    print(f"  {c('grey','○')} aucun backend de traduction disponible (Ollama/deep_translator)")
+                    break
+            _save_translation_cache()
+            if n_ok_tr:
+                print(f"  {c('green','✓')} {n_ok_tr} traductions via {_TR_BACKEND}")
 
     total = sum(len(v) for v in by_theme.values())
     print(f"\n{c('bold','📊')} {total} articles uniques · {n_ok}/{len(feeds)} sources OK\n")

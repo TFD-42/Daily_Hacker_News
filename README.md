@@ -1,30 +1,49 @@
 # 🛡 Daily Hacker News
 
-Aggregates dozens of security / pentest RSS feeds into a single clean HTML
-report — searchable, paginated, and exposed as a JSON API that other tools
-can query.
+Aggregates **55 security / pentest / threat-intel** RSS feeds into a single
+searchable HTML report — with a **🔥 Trending Now** section that surfaces
+CVEs cited by multiple sources in the last 24h, per-article **heat scoring**
+(freshness × severity × KEV × source weight), and **auto FR → EN translation**
+of every summary.
 
-Bundled with a **569-entry OSINT search-engine catalogue** (from
-[edoardottt/awesome-hacker-search-engines](https://github.com/edoardottt/awesome-hacker-search-engines),
-CC0-1.0) — Shodan, Censys, GreyNoise, ONYPHE and hundreds more, organised in
-28 categories.
+Bundled with:
+- 🎯 **Threat Intelligence** feed set (Google Project Zero, TAG, MSRC, Talos,
+  Unit42, SentinelLabs, Volexity, Kaspersky Securelist, ESET WeLiveSecurity,
+  Malwarebytes Labs, Sophos, Trend Micro Research, Google Security Blog)
+- 🐛 **Bug bounty gold** (HackerOne Hacktivity, ZDI advisories)
+- 🌐 **Community signal** (r/netsec, r/AskNetsec, r/blueteamsec)
+- 🕵️ **569-entry OSINT search-engine catalogue** (from
+  [edoardottt/awesome-hacker-search-engines](https://github.com/edoardottt/awesome-hacker-search-engines),
+  CC0-1.0)
+- 💥 **10 offensive-security references** (Command Injection, LOLBins,
+  Upload/Webshells)
 
 ## Features
 
-- 🔎 Live search bar (title, source, CVE, tag, summary)
+- 🔥 **Gold-now trending detection** — cross-source CVE correlation + fresh KEV pin + top-heat 24h
+- 🌡 **Heat score** per article — `fresh × severity × KEV × exploit × source_weight`, exposed in JSON
+- 🇬🇧 **Auto FR → EN translation** — Ollama first (local, private), then `deep_translator` (Google, no key); silent skip if neither available, JSONL cache to skip re-translations
+- 🔎 Live search bar (title, source, CVE, tag, summary, EN + FR)
 - 📖 50 items per page × 10 pages of history per theme (500/theme)
-- 🧠 Persistent JSONL store — other agents/scripts can query the backlog
-- 🇫🇷 Optional French summaries via [rss_watcher](https://github.com/) items file
-- 🎯 Themed sections: CVE, Exploits, Security News EN/FR, Tools, CTF
+- 🧠 Persistent JSONL store — other agents can query the backlog
+- 🎯 Themed sections: **Trending · CVE · Threat · Exploit · News EN/FR · Tools · CTF**
 - 🖥 One-file build → `.app` / `.exe` / Linux binary (PyInstaller)
 
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-user>/Daily_Hacker_News.git
+git clone https://github.com/TFD-42/Daily_Hacker_News.git
 cd Daily_Hacker_News
-python3 -m pip install feedparser PyYAML   # both optional but recommended
-python3 scripts/secjournal.py --open       # generate today's journal
+python3 -m pip install feedparser PyYAML deep-translator   # all recommended
+python3 scripts/secjournal.py --open                       # generate today's journal
+```
+
+### Enable local (private) translation via Ollama
+
+```bash
+ollama pull qwen2.5:3b            # small bilingual model, ~2 GB
+export OLLAMA_TRANSLATE_MODEL=qwen2.5:3b   # override default
+python3 scripts/secjournal.py     # Ollama beats deep_translator when reachable
 ```
 
 ## Usage
@@ -36,7 +55,14 @@ python3 scripts/secjournal.py --output both        # HTML + Markdown
 python3 scripts/secjournal.py --themes CVE,Exploit # filter themes
 python3 scripts/secjournal.py --per-page 100       # bigger pages
 python3 scripts/secjournal.py --export-opml        # export all feeds as OPML
+python3 scripts/secjournal.py --no-translate       # skip EN translation
+python3 scripts/secjournal.py --no-trending        # skip Trending Now section
+python3 scripts/secjournal.py --translate-max 200  # translate more per run
 ```
+
+Each JSON record shipped to consumers now includes `heat` (float), `summary_en`,
+and `summary_fr` alongside the original `summary` — downstream projects can
+pick the language they need without a second translation pass.
 
 ### Search backend (for other agents / scripts)
 

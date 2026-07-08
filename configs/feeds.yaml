@@ -4,8 +4,9 @@ description: >
   ajouter, retirer ou désactiver un flux — AUCUNE recompilation nécessaire.
   Repli sur la liste intégrée si ce fichier est absent ou invalide.
 
-# Champs : id (unique) · label · theme · url · [ftype] · [enabled: false]
-# theme ∈ CVE, Exploit, News-EN, News-FR, Outils, CTF
+# Champs : id (unique) · label · theme · url · [ftype] · [enabled: false] · [weight: 1.0]
+# theme ∈ CVE, Exploit, Threat, News-EN, News-FR, Outils, CTF
+# weight : multiplicateur de score de fraicheur (>1 = source premium temps reel)
 
 feeds:
   # ── CVE & Vulnérabilités ──
@@ -167,3 +168,110 @@ feeds:
     theme: "CTF"
     url:   "https://www.root-me.org/spip.php?page=backend"
 
+
+  # ══════════════════════════════════════════════════════════════
+  # GOLD NOW — sources temps reel, threat intel, innovations
+  # ══════════════════════════════════════════════════════════════
+
+  # ── Threat Intelligence (recherche APT / campagnes actives) ──
+  - id:    "google-project-zero"
+    label: "Google Project Zero"
+    theme: "Threat"
+    url:   "https://googleprojectzero.blogspot.com/feeds/posts/default"
+    weight: 2.0
+  - id:    "google-tag"
+    label: "Google TAG"
+    theme: "Threat"
+    url:   "https://blog.google/threat-analysis-group/rss/"
+    weight: 2.0
+  - id:    "msrc"
+    label: "Microsoft MSRC"
+    theme: "Threat"
+    url:   "https://msrc.microsoft.com/blog/feed"
+    weight: 1.8
+  - id:    "talos"
+    label: "Cisco Talos"
+    theme: "Threat"
+    url:   "https://blog.talosintelligence.com/rss/"
+    weight: 1.8
+  - id:    "unit42"
+    label: "Palo Alto Unit42"
+    theme: "Threat"
+    url:   "https://unit42.paloaltonetworks.com/feed/"
+    weight: 1.8
+  - id:    "malwarebytes-labs"
+    label: "Malwarebytes Labs"
+    theme: "Threat"
+    url:   "https://www.malwarebytes.com/blog/feed/index.xml"
+    weight: 1.5
+  - id:    "sentinellabs"
+    label: "SentinelLabs"
+    theme: "Threat"
+    url:   "https://www.sentinelone.com/labs/feed/"
+    weight: 1.7
+  - id:    "welivesecurity"
+    label: "ESET WeLiveSecurity"
+    theme: "Threat"
+    url:   "https://www.welivesecurity.com/feed/"
+    weight: 1.5
+  - id:    "sophos"
+    label: "Sophos News"
+    theme: "Threat"
+    url:   "https://news.sophos.com/en-us/feed/"
+    weight: 1.4
+  - id:    "trendmicro-research"
+    label: "Trend Micro Research"
+    theme: "Threat"
+    url:   "https://feeds.trendmicro.com/TrendMicroResearch"
+    weight: 1.5
+  - id:    "kaspersky-securelist"
+    label: "Kaspersky Securelist"
+    theme: "Threat"
+    url:   "https://securelist.com/feed/"
+    weight: 1.5
+  - id:    "volexity"
+    label: "Volexity"
+    theme: "Threat"
+    url:   "https://www.volexity.com/blog/feed/"
+    weight: 1.7
+  - id:    "google-security"
+    label: "Google Security Blog"
+    theme: "Threat"
+    url:   "https://feeds.feedburner.com/GoogleOnlineSecurityBlog"
+    weight: 1.5
+
+  # ── CVE gold: ZDI advisories, Vulmon ──
+  - id:    "zdi-published"
+    label: "Zero Day Initiative"
+    theme: "CVE"
+    url:   "https://www.zerodayinitiative.com/rss/published/"
+    weight: 2.0
+  - id:    "vulmon-recent"
+    label: "Vulmon Recent"
+    theme: "CVE"
+    url:   "https://vulmon.com/vulnerabilityfeed?type=recent"
+    weight: 1.3
+
+  # ── Communaute temps reel (Reddit) ──
+  - id:    "reddit-netsec"
+    label: "r/netsec"
+    theme: "News-EN"
+    url:   "https://www.reddit.com/r/netsec/.rss"
+    weight: 1.5
+  - id:    "reddit-asknetsec"
+    label: "r/AskNetsec"
+    theme: "News-EN"
+    url:   "https://www.reddit.com/r/AskNetsec/.rss"
+    weight: 1.2
+  - id:    "reddit-blueteamsec"
+    label: "r/blueteamsec"
+    theme: "News-EN"
+    url:   "https://www.reddit.com/r/blueteamsec/.rss"
+    weight: 1.3
+
+  # ── Bug bounty / disclosures publiques ──
+  - id:    "hackerone-hacktivity"
+    label: "HackerOne Hacktivity"
+    theme: "Exploit"
+    url:   "https://hackerone.com/hacktivity.rss"
+    weight: 1.8
