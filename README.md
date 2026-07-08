@@ -65,6 +65,9 @@ run, capped at 5000 items, dedup by URL).
   `ftype` (`json_kev` / `gh_md`) and `enabled: false`.
 - **`configs/search_engines.yaml`** — 569 OSINT search engines in 28
   categories, ready to consume from any tool.
+- **`configs/pentest_references.yaml`** — 10 curated offensive-security
+  references (Command Injection, LOLBins, Upload/Webshells) with per-category
+  notes on the most effective techniques.
 
 ## Build a native app
 
