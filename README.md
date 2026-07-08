@@ -108,3 +108,17 @@ scores.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## 🙏 Thanks
+
+Huge thanks to **[@edoardottt](https://github.com/edoardottt)** — a large part
+of this project's OSINT catalogue (`configs/search_engines.yaml`, 569 engines
+across 28 categories) comes directly from the amazing
+[awesome-hacker-search-engines](https://github.com/edoardottt/awesome-hacker-search-engines)
+list, redistributed here under CC0-1.0. Go star the source ⭐
+
+[![Awesome Hacker Search Engines](https://img.shields.io/badge/OSINT_sources-awesome--hacker--search--engines-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/edoardottt/awesome-hacker-search-engines)
+[![GitHub Repo stars](https://img.shields.io/github/stars/edoardottt/awesome-hacker-search-engines?style=for-the-badge&logo=github&label=Give%20it%20a%20star&color=ffca28)](https://github.com/edoardottt/awesome-hacker-search-engines/stargazers)
+[![License: CC0-1.0](https://img.shields.io/badge/License-CC0_1.0-lightgrey.svg?style=for-the-badge)](https://creativecommons.org/publicdomain/zero/1.0/)
