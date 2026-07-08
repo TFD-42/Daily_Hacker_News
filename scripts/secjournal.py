@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -578,12 +579,157 @@ def _save_translation_cache() -> None:
         print(f"[!] cache traduction non ecrit ({e})", file=sys.stderr)
 
 
-def _try_ollama(text: str, timeout: int = 20) -> Optional[str]:
-    """Traduit via Ollama local si OLLAMA_HOST joignable. Modele : env
-    OLLAMA_TRANSLATE_MODEL (defaut : qwen2.5:3b, leger et bilingue)."""
+def _ollama_host() -> str:
     import os
-    host  = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-    model = os.environ.get("OLLAMA_TRANSLATE_MODEL", "qwen2.5:3b")
+    return os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+
+
+def _ollama_model() -> str:
+    import os
+    return os.environ.get("OLLAMA_TRANSLATE_MODEL", "qwen2.5:3b")
+
+
+def _ollama_daemon_up(timeout: float = 1.5) -> bool:
+    try:
+        with urllib.request.urlopen(_ollama_host() + "/api/tags", timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _ollama_model_present(model: str) -> bool:
+    try:
+        with urllib.request.urlopen(_ollama_host() + "/api/tags", timeout=3) as r:
+            data = json.loads(r.read())
+    except Exception:
+        return False
+    want = model.split(":")[0].lower()
+    for m in data.get("models", []):
+        name = (m.get("name") or "").split(":")[0].lower()
+        if name == want:
+            return True
+    return False
+
+
+def _which(binary: str) -> Optional[str]:
+    import shutil
+    return shutil.which(binary)
+
+
+def _prompt_yes(question: str, auto: bool = False) -> bool:
+    if auto:
+        return True
+    if not sys.stdin.isatty():
+        return False  # non-interactif : on n'installe rien sans consentement
+    try:
+        r = input(f"  {question} [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return r in ("", "y", "yes", "o", "oui")
+
+
+def _install_ollama() -> bool:
+    """Installe Ollama via le script officiel (macOS/Linux) ou pointe vers
+    la page de telechargement (Windows). Bloque jusqu'a fin d'install."""
+    import platform
+    system = platform.system()
+    print(f"  {c('cyan','⇩')} installation d'Ollama pour {system}…")
+    if system in ("Darwin", "Linux"):
+        # brew si dispo sur macOS, sinon script officiel
+        if system == "Darwin" and _which("brew"):
+            r = subprocess.run(["brew", "install", "ollama"])
+            return r.returncode == 0
+        r = subprocess.run("curl -fsSL https://ollama.com/install.sh | sh",
+                           shell=True)
+        return r.returncode == 0
+    if system == "Windows":
+        print("  Windows : telechargez depuis https://ollama.com/download/windows")
+        print("           puis relancez la commande.")
+        return False
+    print(f"  OS non gere ({system})")
+    return False
+
+
+def _start_ollama_daemon(binary: str, wait_s: int = 20) -> bool:
+    """Lance `ollama serve` en tache de fond, attend qu'il reponde."""
+    try:
+        subprocess.Popen([binary, "serve"],
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except Exception as e:
+        print(f"  {c('red','✗')} impossible de lancer 'ollama serve' : {e}")
+        return False
+    for _ in range(wait_s):
+        if _ollama_daemon_up():
+            return True
+        time.sleep(1)
+    return False
+
+
+def _pull_ollama_model(binary: str, model: str) -> bool:
+    """Pull bloquant, affiche la progression Ollama."""
+    print(f"  {c('cyan','⇩')} pull du modele {model} (une seule fois, ~2 GB)…")
+    r = subprocess.run([binary, "pull", model])
+    return r.returncode == 0
+
+
+def ensure_ollama_ready(auto: bool = False, install_missing: bool = True) -> bool:
+    """Setup complet Ollama pour traduction locale privee.
+
+    - Detecte le binaire, l'installe si absent (avec confirmation utilisateur)
+    - Lance le daemon si pas up
+    - Pull le modele de traduction si absent
+    - Retourne True si tout est pret, False si on doit fallback
+
+    auto=True  : pas de prompt (utile pour CI, .app relance)
+    install_missing=False : n'installe jamais, se limite au probe
+    """
+    model = _ollama_model()
+
+    # 1. binaire present ?
+    binary = _which("ollama")
+    if not binary:
+        if not install_missing:
+            return False
+        if not _prompt_yes("Ollama n'est pas installe. L'installer maintenant (~50 MB) ?", auto):
+            return False
+        if not _install_ollama():
+            return False
+        binary = _which("ollama")
+        if not binary:
+            # sur macOS avec brew, PATH peut ne pas etre rafraichi immediatement
+            for candidate in ("/usr/local/bin/ollama", "/opt/homebrew/bin/ollama", "/usr/bin/ollama"):
+                if os.path.exists(candidate):
+                    binary = candidate
+                    break
+        if not binary:
+            print(f"  {c('red','✗')} Ollama installe mais binaire introuvable dans le PATH.")
+            return False
+
+    # 2. daemon up ?
+    if not _ollama_daemon_up():
+        print(f"  {c('cyan','⇢')} demarrage du daemon Ollama…")
+        if not _start_ollama_daemon(binary):
+            print(f"  {c('red','✗')} daemon Ollama ne repond pas.")
+            return False
+
+    # 3. modele present ?
+    if not _ollama_model_present(model):
+        if not _prompt_yes(f"Modele {model} absent (~2 GB). Le telecharger maintenant ?", auto):
+            return False
+        if not _pull_ollama_model(binary, model):
+            print(f"  {c('red','✗')} pull de {model} a echoue.")
+            return False
+
+    return True
+
+
+def _try_ollama(text: str, timeout: int = 20) -> Optional[str]:
+    """Traduit via Ollama local. Utilise ensure_ollama_ready() en amont
+    pour garantir que tout est setup (binaire + daemon + modele)."""
+    host  = _ollama_host()
+    model = _ollama_model()
     prompt = ("Translate the following text to concise, natural English. "
               "Return ONLY the translation, no preamble, no quotes.\n\n" + text)
     body = json.dumps({"model": model, "prompt": prompt, "stream": False,
@@ -1169,9 +1315,29 @@ def main() -> None:
                     help="désactive la traduction EN (plus rapide, moins de trafic)")
     ap.add_argument("--translate-max", type=int, default=80,
                     help="max articles traduits par run (défaut: 80 — évite de saturer le backend)")
+    ap.add_argument("--setup-translate", action="store_true",
+                    help="installe Ollama + pull le modèle de traduction puis quitte (setup interactif)")
+    ap.add_argument("--auto-install",  action="store_true",
+                    help="installe Ollama sans demander (utile en CI ou pour un .app)")
+    ap.add_argument("--no-install",    action="store_true",
+                    help="ne jamais proposer d'installer Ollama — fallback direct")
     ap.add_argument("--no-trending", dest="trending", action="store_false", default=True,
                     help="désactive la section Trending Now")
     args = ap.parse_args()
+
+    if args.setup_translate:
+        print(c("bold", "\n🌐 Setup traduction — Ollama local\n"))
+        ok = ensure_ollama_ready(auto=args.auto_install, install_missing=not args.no_install)
+        if ok:
+            # test rapide
+            out = translate_to_en("Bonjour, ceci est un test de traduction.")
+            if out:
+                print(f"  {c('green','✓')} test OK ({_TR_BACKEND}) : {out}")
+            else:
+                print(f"  {c('red','✗')} setup semble OK mais le test de traduction a echoue")
+        else:
+            print(f"  {c('grey','○')} Ollama non setup — le tool utilisera deep_translator ou passera outre")
+        return
 
     if args.search:
         theme = args.themes.split(",")[0].strip() if args.themes.strip() else ""
@@ -1250,9 +1416,18 @@ def main() -> None:
         if n_trend:
             print(f"{c('bold','🔥')} Trending: {n_trend} articles multi-source / KEV / top-heat")
 
-    # ── Traduction EN (best-effort, silencieux si aucun backend) ─────────────
+    # ── Traduction EN (auto-setup Ollama > fallback deep_translator) ─────────
     if args.translate:
         _load_translation_cache()
+        # Auto-setup Ollama en premier (prompt Y/n sauf --auto-install / --no-install)
+        # Fallback silencieux vers deep_translator si Ollama pas disponible.
+        if not args.no_install and not _ollama_daemon_up():
+            ready = ensure_ollama_ready(auto=args.auto_install,
+                                        install_missing=not args.no_install)
+            if not ready:
+                # message discret, on continue avec deep_translator si dispo
+                print(f"  {c('grey','ℹ')} traduction : fallback deep_translator (Ollama non disponible)")
+
         # priorite : Trending > Threat > CVE > Exploit > News-FR (pour anglicisation) > reste
         priority = ["Trending", "Threat", "CVE", "Exploit", "News-FR", "News-EN", "Outils", "CTF"]
         candidates: list[Article] = []

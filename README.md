@@ -34,17 +34,34 @@ Bundled with:
 ```bash
 git clone https://github.com/TFD-42/Daily_Hacker_News.git
 cd Daily_Hacker_News
-python3 -m pip install feedparser PyYAML deep-translator   # all recommended
+python3 -m pip install feedparser PyYAML deep-translator   # recommended
 python3 scripts/secjournal.py --open                       # generate today's journal
 ```
 
-### Enable local (private) translation via Ollama
+### Translation — zero config
+
+Translation is on by default. On first run, the tool detects whether a local
+Ollama daemon is available and, if not, offers to set it up in one step:
+
+- **Not installed?** You'll be prompted to install Ollama via the official
+  script (~50 MB). `brew install ollama` is used when Homebrew is present.
+- **Daemon not running?** It's started automatically in the background.
+- **Model missing?** A small bilingual model (`qwen2.5:3b`, ~2 GB, one-time)
+  is pulled.
+
+If you decline any prompt or Ollama can't be set up, the tool silently falls
+back to `deep_translator` (public API, no key). If that's not installed either,
+translation is skipped without breaking the run.
+
+**Explicit setup / non-interactive**:
 
 ```bash
-ollama pull qwen2.5:3b            # small bilingual model, ~2 GB
-export OLLAMA_TRANSLATE_MODEL=qwen2.5:3b   # override default
-python3 scripts/secjournal.py     # Ollama beats deep_translator when reachable
+python3 scripts/secjournal.py --setup-translate           # interactive walkthrough
+python3 scripts/secjournal.py --setup-translate --auto-install   # unattended (CI, .app)
+python3 scripts/secjournal.py --no-install                # never prompt to install
 ```
+
+Override the model with `OLLAMA_TRANSLATE_MODEL=<name>` for any Ollama tag.
 
 ## Usage
 
