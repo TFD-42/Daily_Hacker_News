@@ -1,0 +1,33 @@
+# Generated output
+out/
+knowledge/rss/journal_store.jsonl
+knowledge/rss/items.jsonl
+
+# Build artifacts
+_build_tmp/
+build/
+dist/
+*.spec
+DailyHackerNews.app/
+DailyHackerNews.exe
+DailyHackerNews
+DailyHackerNews.desktop
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local overrides
+.env
+.env.local
+configs/*.local.yaml
