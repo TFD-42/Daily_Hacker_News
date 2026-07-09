@@ -145,7 +145,7 @@ ensure_journal() {
     latest=$(ls -1t "$JOURNAL_DIR"/secjournal_*.html 2>/dev/null | head -1 || true)
   fi
   if [ -z "$latest" ]; then
-    err "aucun journal généré — inspecte scripts/secjournal.py"
+    err "no journal generated — check scripts/secjournal.py"
     exit 2
   fi
   ok "journal servi : $(basename "$latest")"
@@ -153,8 +153,8 @@ ensure_journal() {
 
 # ── launch serve.py ──────────────────────────────────────────────────────────
 launch_serve() {
-  info "lancement du serveur hardened sur 127.0.0.1:$PORT (trust-proxy: ON)"
-  # 127.0.0.1 only — le tunnel Cloudflare est l'unique voie d'accès public.
+  info "starting hardened server on 127.0.0.1:$PORT (trust-proxy: ON)"
+  # 127.0.0.1 only — the Cloudflare tunnel is the sole public entry point.
   # trust-proxy => on lit CF-Connecting-IP + CF-IPCountry.
   nohup "$PY" "$ROOT/scripts/serve.py" \
       --host 127.0.0.1 --port "$PORT" \
@@ -164,7 +164,7 @@ launch_serve() {
   echo $! > "$SERVE_PID"
   sleep 1
   if ! alive "$SERVE_PID"; then
-    err "serve.py n'a pas demarre :"
+    err "serve.py did not start:"
     cat "$SERVE_LOG" >&2
     exit 3
   fi
@@ -173,7 +173,7 @@ launch_serve() {
 
 # ── launch cloudflared ───────────────────────────────────────────────────────
 launch_cloudflared() {
-  info "lancement cloudflared Quick Tunnel …"
+  info "starting cloudflared Quick Tunnel …"
   local args=(tunnel --url "http://127.0.0.1:$PORT" --no-autoupdate \
               --metrics 127.0.0.1:4040)
   if [ -n "$NAMED_TUNNEL" ]; then
@@ -203,7 +203,7 @@ launch_cloudflared() {
   done
   set -euo pipefail   # restore the FULL strict mode (including -u)
   if [ -z "$url" ]; then
-    err "url tunnel introuvable apres 30s — voir $CF_LOG"
+    err "tunnel URL not found after 30s — see $CF_LOG"
     stop
     exit 4
   fi
@@ -213,13 +213,13 @@ launch_cloudflared() {
     *) url="https://$url" ;;
   esac
   echo "$url" > "$URL_FILE"
-  ok "tunnel actif"
+  ok "tunnel up"
   echo "$(c "1;32" "→") URL publique : $(c "1;36" "$url")"
 }
 
 # ── enriched log streamer ────────────────────────────────────────────────────
 stream_logs() {
-  info "log stream (Ctrl-C = quit tail; process reste vivant sauf --daemon)"
+  info "log stream (Ctrl-C = quit tail; process stays alive unless --daemon)"
   # tail the access log and pretty-print JSON records.
   # SECURITY: log lines contain attacker-controlled fields (path/referrer/UA
   # from public tunnel visitors). Feed them to Python over STDIN — never splice
@@ -260,7 +260,7 @@ done
 
 check_deps
 if alive "$SERVE_PID" || alive "$CF_PID"; then
-  warn "processus deja actifs — utilise ./build2.sh --status ou --stop"
+  warn "processes already running — use ./build2.sh --status or --stop"
   exit 5
 fi
 free_port
@@ -272,6 +272,6 @@ if [ "$MODE" = "daemon" ]; then
   ok "detached. logs → $ACCESS_LOG · URL → $URL_FILE"
   ok "stop : ./build2.sh --stop"
 else
-  trap 'echo; info "arrêt…"; stop; exit 0' INT TERM
+  trap 'echo; info "stopping…"; stop; exit 0' INT TERM
   stream_logs
 fi
