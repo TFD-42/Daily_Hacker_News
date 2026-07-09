@@ -109,8 +109,14 @@ jobs:
 
       - name: Generate a journal (offline — no fetch, no translate)
         run: |
-          python scripts/secjournal.py --no-fetch --no-translate --no-open --output html
-          test -f out/journals/feed.json
+          python scripts/secjournal.py --no-fetch --no-translate --no-open --output both
+          # servable artifacts live under the public site subdir …
+          test -f out/journals/site/feed.json
+          ls out/journals/site/secjournal_*.html >/dev/null
+          # … and the internal Markdown must NOT be in the served root
+          if ls out/journals/site/*.md >/dev/null 2>&1; then
+            echo "Markdown leaked into the served site dir" && exit 1
+          fi
 
       - name: Serve smoke test (background) + curl
         run: |

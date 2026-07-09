@@ -158,10 +158,12 @@ Local store search runs against `knowledge/rss/journal_store.jsonl`
 ## Publish over HTTP(S)
 
 A hardened static server is bundled — `scripts/serve.py`, wrapped by
-`serve.sh`. It **only** exposes the generated journal outputs
-(`out/journals/*.html`, `feed.json`, `secjournal_feeds.opml`) and denies
-everything else: source code, configs, knowledge base, dotfiles,
-subdirectories, arbitrary files.
+`serve.sh`. Its document root is the dedicated public subdir
+**`out/journals/site/`**, which contains ONLY the servable artifacts
+(`*.html`, `feed.json`, `secjournal_feeds.opml`). Everything else — source
+code, configs, knowledge base, the internal Markdown in the `out/journals`
+parent, dotfiles — lives **outside** that root and is therefore physically
+unreachable, on top of the filename whitelist (defence in depth).
 
 ### Quick start
 
@@ -245,11 +247,13 @@ by editing `feeds.yaml` next to the binary — no rebuild required.
 
 ```
 out/journals/
-├── secjournal_YYYYMMDD_HHMM.html   # today's report
-├── feed.json                       # machine-readable snapshot
-└── secjournal_feeds.opml           # importable feed list
+├── site/                           # ← the ONLY dir the web server exposes
+│   ├── secjournal_YYYYMMDD_HHMM.html   # today's report
+│   ├── feed.json                       # machine-readable snapshot
+│   └── secjournal_feeds.opml           # importable feed list
+└── secjournal_YYYYMMDD_HHMM.md     # internal Markdown (never served)
 knowledge/rss/
-└── journal_store.jsonl             # searchable backlog
+└── journal_store.jsonl             # searchable backlog (never served)
 ```
 
 ## Optional inputs

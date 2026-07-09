@@ -33,7 +33,7 @@ PY="${PY:-python3}"
 PORT="${PORT:-8787}"
 NAMED_TUNNEL="${NAMED_TUNNEL:-}"
 
-JOURNAL_DIR="$ROOT/out/journals"
+JOURNAL_DIR="$ROOT/out/journals/site"   # public site subdir (served)
 SERVE_PID="$ROOT/.build2_serve.pid"
 CF_PID="$ROOT/.build2_cf.pid"
 SERVE_LOG="$ROOT/.build2_serve.log"

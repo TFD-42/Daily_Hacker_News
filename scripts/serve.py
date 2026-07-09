@@ -2,9 +2,11 @@
 """
 serve.py — hardened static server for Daily Hacker News.
 
-Serves ONLY the generated journal outputs (`out/journals/*.html`,
-`feed.json`, `secjournal_feeds.opml`). Every other path — source code,
-config, knowledge base, dotfiles, arbitrary directories — is denied.
+Serves ONLY the generated public site (`out/journals/site/*.html`,
+`feed.json`, `secjournal_feeds.opml`). The server root is that dedicated
+subdir, so every other path — source code, config, knowledge base, the
+journals parent, Markdown, dotfiles, arbitrary directories — is physically
+out of reach as well as denied by the filename whitelist.
 
 Design principles
 -----------------
@@ -66,7 +68,12 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 PROJECT_ROOT = _project_root()
-JOURNAL_DIR  = (PROJECT_ROOT / "out" / "journals").resolve()
+# The server root is the dedicated public subdir `out/journals/site`, which
+# holds ONLY servable artifacts (HTML, feed.json, OPML). The rest of the
+# project — source, configs, knowledge base, the journals parent itself — is
+# physically outside this root and therefore unreachable, independent of the
+# filename whitelist below (defence in depth).
+JOURNAL_DIR  = (PROJECT_ROOT / "out" / "journals" / "site").resolve()
 
 # ── Whitelist — what may leave the server ────────────────────────────────────
 

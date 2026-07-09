@@ -64,10 +64,16 @@ OUT_BASE  = PROJECT_ROOT or (Path.home() / "DailyHackerNews")
 ROOT       = DATA_ROOT
 CONFIG_DIR = DATA_ROOT / "configs"
 OUT_DIR    = OUT_BASE / "out" / "journals"
+# SITE_DIR is the ONLY directory the web server is allowed to expose. Every
+# publicly servable artifact (HTML, feed.json, OPML) is written here; internal
+# outputs (Markdown, caches, the store) stay in OUT_DIR / knowledge and are
+# therefore physically out of the server's reach.
+SITE_DIR   = OUT_DIR / "site"
 KB_RSS     = DATA_ROOT / "knowledge" / "rss" / "items.jsonl"
 STORE      = OUT_BASE / "knowledge" / "rss" / "journal_store.jsonl"
 STORE_CAP  = 5000
 OUT_DIR.mkdir(parents=True, exist_ok=True)
+SITE_DIR.mkdir(parents=True, exist_ok=True)
 
 UA = "DailyHackerNews/1.0"
 
@@ -1224,8 +1230,8 @@ def _load_store_records() -> list[dict]:
                     recs.append(json.loads(line))
                 except Exception:
                     pass
-    if not recs:  # repli : dernier feed.json généré
-        fj = OUT_DIR / "feed.json"
+    if not recs:  # fallback: last generated feed.json
+        fj = SITE_DIR / "feed.json"
         if fj.is_file():
             try:
                 recs = (json.loads(fj.read_text(encoding="utf-8")) or {}).get("items", [])
@@ -1488,7 +1494,7 @@ def main() -> None:
         return
 
     if args.export_opml:
-        p = OUT_DIR / "secjournal_feeds.opml"
+        p = SITE_DIR / "secjournal_feeds.opml"
         export_opml(p)
         print(f"{c('green','✓')} OPML → {p}")
         return
@@ -1669,25 +1675,27 @@ def main() -> None:
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     html_path = None
 
+    # Servable artifacts (HTML/OPML/JSON) go to SITE_DIR — the only dir the
+    # server exposes. Internal Markdown stays in OUT_DIR, unreachable by the web.
     if args.output in ("html", "both"):
         html = render_html(by_theme, args, total, len(feeds), n_ok)
-        html_path = OUT_DIR / f"secjournal_{ts}.html"
+        html_path = SITE_DIR / f"secjournal_{ts}.html"
         html_path.write_text(html, encoding="utf-8")
-        # Copier aussi OPML à côté
-        opml_p = OUT_DIR / "secjournal_feeds.opml"
+        # OPML next to the HTML (the footer links to it relatively)
+        opml_p = SITE_DIR / "secjournal_feeds.opml"
         if not opml_p.exists():
             export_opml(opml_p)
         print(f"{c('green','✓')} HTML  → {html_path}")
 
     if args.output in ("md", "both"):
         md   = render_md(by_theme, args, total)
-        md_p = OUT_DIR / f"secjournal_{ts}.md"
+        md_p = OUT_DIR / f"secjournal_{ts}.md"   # internal, not served
         md_p.write_text(md, encoding="utf-8")
         print(f"{c('green','✓')} MD    → {md_p}")
 
-    # Always generate feed.json for Garmin watch app
+    # Always generate feed.json for the Garmin watch app (served)
     json_str  = render_json(by_theme, args, total)
-    json_path = OUT_DIR / "feed.json"
+    json_path = SITE_DIR / "feed.json"
     json_path.write_text(json_str, encoding="utf-8")
     print(f"{c('green','✓')} JSON  → {json_path}")
 
