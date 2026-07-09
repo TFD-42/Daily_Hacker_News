@@ -6,7 +6,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-09
+
 ### Added
+- `./dhn` — single interactive launcher (menu + `today`/`week`/`serve`/
+  `publish`/`search`/`build` shortcuts) wrapping every underlying tool
+- Full auto-translation to English: non-English **titles + summaries** (FR, CN)
+  are rendered in English; parallelised, JSONL-cached
 - `pyproject.toml` — installable via `pip install .` or `pip install -e '.[dev]'`
 - `pytest` test suite (33 tests, all green) covering:
   - Heat scoring + trending correlation
@@ -27,7 +33,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   TLS, rate limit, IP allowlist, HTTP Basic auth, structured JSON logs
 - `serve.sh` launcher — fg/bg/daemon, macOS launchd install,
   Linux systemd unit dump, self-signed cert generation
-- `build2.sh` — Cloudflare Quick Tunnel wrapper with enriched logs
+- `publish.sh` — Cloudflare Quick Tunnel wrapper with enriched logs
   (country, OS, browser, device) via `CF-Connecting-IP` / `CF-IPCountry`
 - `scripts/serve.py` `--trust-proxy` flag for reverse-proxy setups
 - `build.py` — Termux (Android) install target, auto-detects `$TERMUX_VERSION`
@@ -51,8 +57,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Path resolution respects `PROJECT_ROOT` before falling back to bundle
 
 ### Security
+- Server document root isolated to `out/journals/site/` — source, configs,
+  knowledge base and internal Markdown are physically unreachable
+- Renamed `build2.sh` → `publish.sh` (it publishes; it never built anything)
+- Rate limiter evicts drained buckets (bounded memory); constant-time auth
+  compare; `X-Forwarded-For` uses the trusted rightmost value
+- Fixed a code-injection path in the tunnel log streamer (attacker-controlled
+  log lines were spliced into `python -c`)
+- Sanitised identity markers (neutral User-Agent, generic launchd label,
+  RFC 5737 example IPs); all UI, CLI help and internal comments now English
 - Replaced a legacy identifying User-Agent with a neutral `DailyHackerNews/1.0`
-- Purged the old identifier from git history
 - Server rejects `%00` and encoded path traversal
 - No third-party runtime deps required — stdlib-only path works
 
@@ -87,7 +101,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - JSON API for downstream consumers
 - macOS `.app` / Windows `.exe` / Linux binary via PyInstaller
 
-[Unreleased]: https://github.com/TFD-42/Daily_Hacker_News/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/TFD-42/Daily_Hacker_News/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/TFD-42/Daily_Hacker_News/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/TFD-42/Daily_Hacker_News/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/TFD-42/Daily_Hacker_News/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/TFD-42/Daily_Hacker_News/compare/v0.1.0...v0.2.0

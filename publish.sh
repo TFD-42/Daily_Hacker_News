@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build2.sh — publish the latest journal HTML behind a hardened HTTP server
+# publish.sh — publish the latest journal online: hardened HTTP server
 #              exposed via a Cloudflare Quick Tunnel.
 #
 # Composition:
@@ -15,12 +15,12 @@
 #
 # Usage
 # -----
-#   ./build2.sh                     # foreground, tail logs, CTRL-C to stop
-#   ./build2.sh --daemon            # detach, writes PIDs + URL to files
-#   ./build2.sh --stop              # stop the daemon set
-#   ./build2.sh --status            # is it running?
-#   ./build2.sh --regen             # force secjournal.py before serving
-#   PORT=9090 ./build2.sh           # override local port
+#   ./publish.sh                     # foreground, tail logs, CTRL-C to stop
+#   ./publish.sh --daemon            # detach, writes PIDs + URL to files
+#   ./publish.sh --stop              # stop the daemon set
+#   ./publish.sh --status            # is it running?
+#   ./publish.sh --regen             # force secjournal.py before serving
+#   PORT=9090 ./publish.sh           # override local port
 #
 # Only Cloudflare Quick Tunnel is used by default (no login, no config).
 # For your own named tunnel, set NAMED_TUNNEL=<tunnel-name>.
@@ -34,12 +34,12 @@ PORT="${PORT:-8787}"
 NAMED_TUNNEL="${NAMED_TUNNEL:-}"
 
 JOURNAL_DIR="$ROOT/out/journals/site"   # public site subdir (served)
-SERVE_PID="$ROOT/.build2_serve.pid"
-CF_PID="$ROOT/.build2_cf.pid"
-SERVE_LOG="$ROOT/.build2_serve.log"
-CF_LOG="$ROOT/.build2_cf.log"
+SERVE_PID="$ROOT/.publish_serve.pid"
+CF_PID="$ROOT/.publish_cf.pid"
+SERVE_LOG="$ROOT/.publish_serve.log"
+CF_LOG="$ROOT/.publish_cf.log"
 ACCESS_LOG="$ROOT/.access.log"
-URL_FILE="$ROOT/.build2_url.txt"
+URL_FILE="$ROOT/.publish_url.txt"
 
 # ── ansi helpers ─────────────────────────────────────────────────────────────
 c()    { printf "\033[%sm%s\033[0m" "$1" "$2"; }
@@ -260,7 +260,7 @@ done
 
 check_deps
 if alive "$SERVE_PID" || alive "$CF_PID"; then
-  warn "processes already running — use ./build2.sh --status or --stop"
+  warn "processes already running — use ./publish.sh --status or --stop"
   exit 5
 fi
 free_port
@@ -270,7 +270,7 @@ launch_cloudflared
 
 if [ "$MODE" = "daemon" ]; then
   ok "detached. logs → $ACCESS_LOG · URL → $URL_FILE"
-  ok "stop : ./build2.sh --stop"
+  ok "stop : ./publish.sh --stop"
 else
   trap 'echo; info "stopping…"; stop; exit 0' INT TERM
   stream_logs

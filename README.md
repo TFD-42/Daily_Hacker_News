@@ -36,8 +36,22 @@ Bundled with:
 git clone https://github.com/TFD-42/Daily_Hacker_News.git
 cd Daily_Hacker_News
 python3 -m pip install feedparser PyYAML deep-translator   # recommended
-python3 scripts/secjournal.py --open                       # generate today's journal
+./dhn                                                       # interactive launcher
 ```
+
+**`./dhn`** is the single entry point — an interactive menu to generate,
+serve, publish, search, or build. Prefer flags? Every action has a shortcut:
+
+```bash
+./dhn today             # generate today's journal and open it
+./dhn week              # last 7 days
+./dhn serve             # hardened local server (127.0.0.1:8000)
+./dhn publish           # publish online via a Cloudflare Quick Tunnel
+./dhn search "log4j"    # query the local archive
+./dhn build             # compile the native .app / .exe / binary
+```
+
+Everything below documents the underlying tools that `./dhn` wraps.
 
 ### Translation — zero config
 

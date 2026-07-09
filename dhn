@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# dhn — the single, friendly entry point for Daily Hacker News.
+#
+# Run with no argument for an interactive menu, or pass a subcommand to skip
+# straight to it:
+#
+#   ./dhn                 # interactive menu
+#   ./dhn today           # generate today's journal and open it
+#   ./dhn week            # generate the last 7 days
+#   ./dhn serve           # serve locally (http://127.0.0.1:8000)
+#   ./dhn publish         # publish online via a Cloudflare Quick Tunnel
+#   ./dhn build           # compile the native .app / .exe / binary
+#   ./dhn search <query>  # search the local archive (JSON)
+#
+# It only wraps the underlying tools (scripts/secjournal.py, serve.sh,
+# publish.sh, build.py) — nothing new to learn, one place to start.
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+# Pick a Python 3 interpreter
+PY="$(command -v python3 || command -v python || true)"
+[ -n "$PY" ] || { echo "python3 not found — install Python 3.9+"; exit 1; }
+
+# ── pretty output ─────────────────────────────────────────────────────────────
+if [ -t 1 ]; then
+  B=$'\033[1m'; DIM=$'\033[2m'; GRN=$'\033[32m'; CYN=$'\033[36m'; RST=$'\033[0m'
+else
+  B=""; DIM=""; GRN=""; CYN=""; RST=""
+fi
+say()  { printf '%s\n' "$*"; }
+head_() {
+  say ""
+  say "${B}  🛡  Daily Hacker News${RST}"
+  say "${DIM}  security & pentest intel — one launcher${RST}"
+  say ""
+}
+
+# ── actions (each wraps an existing tool) ─────────────────────────────────────
+gen()     { "$PY" scripts/secjournal.py --open --days "${1:-1}"; }
+serve()   { ./serve.sh "$@"; }
+publish() { ./publish.sh "$@"; }
+build()   { "$PY" build.py; }
+search()  {
+  local q="$*"
+  [ -n "$q" ] || { printf 'search query: '; read -r q; }
+  [ -n "$q" ] || { say "empty query"; return 1; }
+  "$PY" scripts/secjournal.py --search "$q"
+}
+
+# ── non-interactive subcommands ───────────────────────────────────────────────
+case "${1:-}" in
+  today)          shift; gen 1;         exit $? ;;
+  week)           shift; gen 7;         exit $? ;;
+  serve)          shift; serve "$@";    exit $? ;;
+  publish|share)  shift; publish "$@";  exit $? ;;
+  build|compile)  shift; build;         exit $? ;;
+  search|find)    shift; search "$@";   exit $? ;;
+  -h|--help)      sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+  "")             ;;                      # fall through to the menu
+  *)              say "unknown command: $1 (try: today week serve publish build search)"; exit 2 ;;
+esac
+
+# ── interactive menu ──────────────────────────────────────────────────────────
+while true; do
+  head_
+  say "  ${B}1${RST}) 📰  Generate today's journal   ${DIM}(open in browser)${RST}"
+  say "  ${B}2${RST}) 🗓   Generate the last 7 days"
+  say "  ${B}3${RST}) 🖥   Serve locally              ${DIM}(http://127.0.0.1:8000)${RST}"
+  say "  ${B}4${RST}) 🌐  Publish online             ${DIM}(Cloudflare tunnel)${RST}"
+  say "  ${B}5${RST}) 🔎  Search the archive"
+  say "  ${B}6${RST}) 🔨  Build the native app"
+  say "  ${B}0${RST}) Quit"
+  say ""
+  printf '  %s' "choice ▸ "
+  read -r choice || { say ""; exit 0; }
+  say ""
+  case "$choice" in
+    1) gen 1               || say "${DIM}(generation failed — see output above)${RST}" ;;
+    2) gen 7               || say "${DIM}(generation failed)${RST}" ;;
+    3) say "${CYN}Starting local server — Ctrl-C to stop.${RST}"; serve --local || true ;;
+    4) say "${CYN}Publishing via Cloudflare Quick Tunnel — Ctrl-C to stop.${RST}"; publish || true ;;
+    5) search || true ;;
+    6) build || say "${DIM}(build failed)${RST}"; say "${GRN}Done.${RST}" ;;
+    0|q|quit|exit) say "bye 👋"; exit 0 ;;
+    *) say "  ${DIM}pick 0–6${RST}" ;;
+  esac
+  say ""
+  printf '  %s' "press Enter to return to the menu…"
+  read -r _ || exit 0
+done

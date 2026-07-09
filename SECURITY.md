@@ -38,7 +38,7 @@ ship a fix within **30 days** for CVSS 7.0+ issues.
 In scope:
 
 - The Python code shipped in `scripts/`, `build.py`, and the shell
-  wrappers (`serve.sh`, `build2.sh`)
+  wrappers (`serve.sh`, `publish.sh`)
 - The `configs/*.yaml` catalogs (misinformation / poisoning risks)
 - The hardened HTTP server (`scripts/serve.py`) — the whitelist,
   path canonicalisation, security headers, and rate limiter

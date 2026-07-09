@@ -284,7 +284,7 @@ def build_termux():
     print()
     print("  To publish via Cloudflare Tunnel from Termux:")
     print("    pkg install cloudflared")
-    print("    bash build2.sh --daemon")
+    print("    bash publish.sh --daemon")
     print()
     print("  If 'dhn' is not found, add to your ~/.bashrc:")
     print("    export PATH=\"$HOME/.local/bin:$PATH\"")

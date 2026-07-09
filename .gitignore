@@ -39,12 +39,13 @@ configs/*.local.yaml
 deploy/certs/
 knowledge/rss/translation_cache.jsonl
 
-# build2.sh runtime
-.build2_serve.pid
-.build2_cf.pid
-.build2_serve.log
-.build2_cf.log
-.build2_url.txt
+# publish.sh runtime
+.publish_serve.pid
+.publish_cf.pid
+.publish_serve.log
+.publish_cf.log
+.publish_url.txt
+.build2_*   # legacy runtime (pre-rename), never commit
 
 # Local-only security policy (baseline pre-push checklist, not shipped)
 ZERO_TRUST_SECURITY.md
