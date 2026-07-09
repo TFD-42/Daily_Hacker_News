@@ -51,9 +51,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Path resolution respects `PROJECT_ROOT` before falling back to bundle
 
 ### Security
-- Removed `EllanaAudit/secjournal` User-Agent (identity leak) →
-  `DailyHackerNews/1.0`
-- `git filter-repo` rewrite of history to purge the same identifier
+- Replaced a legacy identifying User-Agent with a neutral `DailyHackerNews/1.0`
+- Purged the old identifier from git history
 - Server rejects `%00` and encoded path traversal
 - No third-party runtime deps required — stdlib-only path works
 

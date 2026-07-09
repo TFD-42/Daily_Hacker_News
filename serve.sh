@@ -142,7 +142,7 @@ stop_bg() {
 }
 
 install_launchd() {
-  local label="com.tfd42.dailyhackernews"
+  local label="com.dailyhackernews.server"
   local plist="$HOME/Library/LaunchAgents/$label.plist"
   mkdir -p "$(dirname "$plist")"
   cat > "$plist" <<PLIST

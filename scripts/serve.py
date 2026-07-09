@@ -31,7 +31,7 @@ Usage
     python3 scripts/serve.py --host 127.0.0.1                # local only
     python3 scripts/serve.py --port 8443 --cert c.pem --key k.pem   # HTTPS
     python3 scripts/serve.py --auth alice:s3cret             # basic auth
-    python3 scripts/serve.py --allow 1.2.3.4 --allow 10.0.0.0/8
+    python3 scripts/serve.py --allow 192.0.2.4 --allow 10.0.0.0/8
 
 Env overrides: `DHN_HOST`, `DHN_PORT`, `DHN_AUTH`, `DHN_CERT`, `DHN_KEY`.
 """

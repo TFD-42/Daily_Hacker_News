@@ -45,3 +45,6 @@ knowledge/rss/translation_cache.jsonl
 .build2_serve.log
 .build2_cf.log
 .build2_url.txt
+
+# Local-only security policy (baseline pre-push checklist, not shipped)
+ZERO_TRUST_SECURITY.md
