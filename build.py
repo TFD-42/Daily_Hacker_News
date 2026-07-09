@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-build.py — Compile DailyHackerNews en un seul fichier cliquable (Win / macOS / Linux)
+build.py — Compile DailyHackerNews into a single clickable file (Win / macOS / Linux)
 
-Usage :
+Usage:
     python3 build.py
 
-Produit dans le dossier du projet :
+Produces in the project directory:
     macOS   → DailyHackerNews.app
     Windows → DailyHackerNews.exe
     Linux   → DailyHackerNews
@@ -19,8 +19,8 @@ import subprocess
 import textwrap
 from pathlib import Path
 
-# ── Chemins ───────────────────────────────────────────────────────────────────
-ROOT       = Path(__file__).resolve().parent          # racine du projet
+# ── Paths ───────────────────────────────────────────────────────────────────
+ROOT       = Path(__file__).resolve().parent          # project root
 SCRIPT     = ROOT / "scripts" / "secjournal.py"
 ICON_PNG   = ROOT / "icon.png"
 TMP        = ROOT / "_build_tmp"
@@ -32,7 +32,7 @@ OS = platform.system()   # 'Darwin' | 'Windows' | 'Linux'
 
 BANNER = r"""
   ╔══════════════════════════════════════════════╗
-  ║  DailyHackerNews Builder — détection OS + compile ║
+  ║  DailyHackerNews Builder — detect OS + compile   ║
   ╚══════════════════════════════════════════════╝
 """
 
@@ -50,16 +50,16 @@ def pip(pkg: str):
 def ensure_pyinstaller():
     try:
         import PyInstaller  # noqa: F401
-        print("[✓] PyInstaller présent")
+        print("[✓] PyInstaller present")
     except ImportError:
-        print("[*] Installation de PyInstaller...")
+        print("[*] Installing PyInstaller...")
         pip("pyinstaller")
 
 
-# ── Conversion d'icône ────────────────────────────────────────────────────────
+# ── Icon conversion ────────────────────────────────────────────────────────
 
 def icon_to_icns(png: Path) -> Path | None:
-    """macOS : PNG → .icns via sips + iconutil"""
+    """macOS: PNG -> .icns via sips + iconutil"""
     if not png.exists():
         return None
     iconset = TMP / "AppIcon.iconset"
@@ -75,7 +75,7 @@ def icon_to_icns(png: Path) -> Path | None:
 
 
 def icon_to_ico(png: Path) -> Path | None:
-    """Windows : PNG → .ico via Pillow"""
+    """Windows: PNG -> .ico via Pillow"""
     if not png.exists():
         return None
     try:
@@ -90,7 +90,7 @@ def icon_to_ico(png: Path) -> Path | None:
     return ico
 
 
-# ── Commande PyInstaller commune ──────────────────────────────────────────────
+# ── Shared PyInstaller command ──────────────────────────────────────────────
 
 def pyinstaller_cmd(icon_path: Path | None = None) -> list:
     cmd = [
@@ -100,7 +100,7 @@ def pyinstaller_cmd(icon_path: Path | None = None) -> list:
         "--distpath", str(DIST_TMP),
         "--workpath", str(WORK_TMP),
         "--specpath", str(SPEC_TMP),
-        # données embarquées : knowledge/rss + configs
+        # bundled data: knowledge/rss + configs
         "--add-data", f"{ROOT / 'knowledge'}:knowledge",
         "--add-data", f"{ROOT / 'configs'}:configs",
     ]
@@ -113,14 +113,14 @@ def pyinstaller_cmd(icon_path: Path | None = None) -> list:
 # ── macOS ─────────────────────────────────────────────────────────────────────
 
 def build_macos():
-    print("[*] Cible : macOS → DailyHackerNews.app")
+    print("[*] Target: macOS -> DailyHackerNews.app")
 
     icns = icon_to_icns(ICON_PNG)
     run(pyinstaller_cmd(icns))
 
     binary = DIST_TMP / "DailyHackerNews"
     if not binary.exists():
-        sys.exit("[!] PyInstaller n'a pas produit de binaire")
+        sys.exit("[!] PyInstaller did not produce a binary")
 
     app = ROOT / "DailyHackerNews.app"
     if app.exists():
@@ -131,12 +131,12 @@ def build_macos():
     macos_dir.mkdir(parents=True)
     res_dir.mkdir(parents=True)
 
-    # Binaire compilé
+    # Compiled binary
     dest_bin = macos_dir / "DailyHackerNews_bin"
     shutil.copy(binary, dest_bin)
     dest_bin.chmod(0o755)
 
-    # Launcher : ouvre Terminal.app et exécute le binaire
+    # Launcher: opens Terminal.app and runs the binary
     launcher = macos_dir / "DailyHackerNews"
     # First run (no journal yet) uses --days 7 for a richer initial view;
     # subsequent runs use --days 3 which stays lively without duplicating too
@@ -161,7 +161,7 @@ def build_macos():
     """))
     launcher.chmod(0o755)
 
-    # Icône
+    # Icon
     if icns and icns.exists():
         shutil.copy(icns, res_dir / "AppIcon.icns")
         icon_plist = "<key>CFBundleIconFile</key><string>AppIcon</string>"
@@ -187,28 +187,28 @@ def build_macos():
     """))
 
     print(f"\n[✓] {app}")
-    print("    → Double-cliquez sur DailyHackerNews.app pour générer et ouvrir le journal")
-    print("    (Premier lancement : clic-droit → Ouvrir si Gatekeeper bloque)")
+    print("    → Double-click DailyHackerNews.app to generate and open the journal")
+    print("    (First launch: right-click -> Open if Gatekeeper blocks it)")
 
 
 # ── Windows ───────────────────────────────────────────────────────────────────
 
 def build_windows():
-    print("[*] Cible : Windows → DailyHackerNews.exe")
+    print("[*] Target: Windows -> DailyHackerNews.exe")
 
     ico = icon_to_ico(ICON_PNG)
     cmd = pyinstaller_cmd(ico) + ["--console"]
-    # Remplacer --distpath par le dossier racine directement
+    # Point --distpath straight at the project root
     idx = cmd.index("--distpath") + 1
     cmd[idx] = str(ROOT)
     run(cmd)
 
     exe = ROOT / "DailyHackerNews.exe"
     if not exe.exists():
-        sys.exit("[!] PyInstaller n'a pas produit de .exe")
+        sys.exit("[!] PyInstaller did not produce a .exe")
 
     print(f"\n[✓] {exe}")
-    print("    → Double-cliquez sur DailyHackerNews.exe pour générer et ouvrir le journal")
+    print("    → Double-click DailyHackerNews.exe to generate and open the journal")
 
 
 # ── Linux ─────────────────────────────────────────────────────────────────────
@@ -231,18 +231,18 @@ def build_termux():
       2. Wire a `dhn` launcher shell script into ~/bin (or $PREFIX/bin).
       3. Report how to run and how to serve the journal.
     """
-    print("[*] Cible : Android / Termux → runtime install (pas de freeze)")
+    print("[*] Target: Android / Termux -> runtime install (no freeze)")
 
     PREFIX = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
     HOME   = Path(os.environ.get("HOME", str(Path.home())))
 
-    print("[*] Mise a jour de pkg…")
+    print("[*] Updating pkg…")
     subprocess.run(["pkg", "update", "-y"],  check=False)
     subprocess.run(["pkg", "upgrade", "-y"], check=False)
 
     pkgs = ["python", "git", "openssl", "libxml2", "libxslt",
             "curl", "termux-api"]
-    print(f"[*] Installation des paquets : {' '.join(pkgs)}")
+    print(f"[*] Installing packages: {' '.join(pkgs)}")
     subprocess.run(["pkg", "install", "-y", *pkgs], check=False)
 
     print("[*] pip : feedparser + pyyaml + deep-translator")
@@ -274,24 +274,24 @@ def build_termux():
     widget.chmod(0o755)
 
     print()
-    print(f"[✓] launcher installe : {launcher}")
-    print(f"[✓] shortcut Termux:Widget : {widget}")
+    print(f"[✓] launcher installed: {launcher}")
+    print(f"[✓] Termux:Widget shortcut: {widget}")
     print()
-    print("  Utilisation :")
-    print("    dhn                              # journal 24h")
-    print("    dhn --days 7 --output both       # semaine, HTML+MD")
+    print("  Usage:")
+    print("    dhn                              # 24h journal")
+    print("    dhn --days 7 --output both       # week, HTML+MD")
     print("    dhn --search 'log4j' --sources github,gitee --lang en")
     print()
-    print("  Pour publier via Cloudflare Tunnel depuis Termux :")
+    print("  To publish via Cloudflare Tunnel from Termux:")
     print("    pkg install cloudflared")
     print("    bash build2.sh --daemon")
     print()
-    print("  Si 'dhn' n'est pas trouve, ajoute a ton ~/.bashrc :")
+    print("  If 'dhn' is not found, add to your ~/.bashrc:")
     print("    export PATH=\"$HOME/.local/bin:$PATH\"")
 
 
 def build_linux():
-    print("[*] Cible : Linux → DailyHackerNews")
+    print("[*] Target: Linux -> DailyHackerNews")
 
     icon = ICON_PNG if ICON_PNG.exists() else None
     cmd = pyinstaller_cmd(icon)
@@ -301,16 +301,16 @@ def build_linux():
 
     binary = ROOT / "DailyHackerNews"
     if not binary.exists():
-        sys.exit("[!] PyInstaller n'a pas produit de binaire")
+        sys.exit("[!] PyInstaller did not produce a binary")
     binary.chmod(0o755)
 
-    # Fichier .desktop pour double-clic dans les gestionnaires de fichiers
+    # .desktop file for double-click in file managers
     desktop = ROOT / "DailyHackerNews.desktop"
     icon_path = str(ICON_PNG) if ICON_PNG.exists() else "terminal"
     desktop.write_text(textwrap.dedent(f"""\
         [Desktop Entry]
         Name=DailyHackerNews
-        Comment=Veille sécurité quotidienne
+        Comment=Daily security intelligence journal
         Exec={binary}
         Icon={icon_path}
         Terminal=true
@@ -320,37 +320,37 @@ def build_linux():
     desktop.chmod(0o755)
 
     print(f"\n[✓] {binary}")
-    print("    → Double-cliquez sur DailyHackerNews (ou DailyHackerNews.desktop) pour lancer")
+    print("    -> Double-click DailyHackerNews (or DailyHackerNews.desktop) to launch")
 
 
-# ── Nettoyage ─────────────────────────────────────────────────────────────────
+# ── Cleanup ─────────────────────────────────────────────────────────────────
 
 def cleanup():
-    print("\n[*] Nettoyage des fichiers de build...")
+    print("\n[*] Cleaning up build files...")
     if TMP.exists():
         shutil.rmtree(TMP)
     for f in ROOT.glob("*.spec"):
         f.unlink(missing_ok=True)
-    print("[✓] Dossiers build/ et fichiers .spec supprimés")
+    print("[✓] build/ dirs and .spec files removed")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     print(BANNER)
-    print(f"[*] OS détecté    : {OS} ({platform.machine()})")
+    print(f"[*] Detected OS   : {OS} ({platform.machine()})")
     print(f"[*] Python        : {sys.version.split()[0]}")
-    print(f"[*] Racine projet : {ROOT}")
+    print(f"[*] Project root : {ROOT}")
     print(f"[*] Script source : {SCRIPT}")
     print()
 
     if not SCRIPT.exists():
         sys.exit(f"[!] Script introuvable : {SCRIPT}")
 
-    # Android/Termux : traite en tout premier, il tourne sur un OS Linux
+    # Android/Termux: handle first, since it reports as a Linux OS
     # mais son toolchain interdit PyInstaller / .desktop / iconutil.
     if is_termux():
-        print("[*] Environnement Termux détecté (Android)")
+        print("[*] Termux environment detected (Android)")
         build_termux()
         return
 
@@ -365,12 +365,12 @@ def main():
     elif OS == "Linux":
         build_linux()
     else:
-        sys.exit(f"[!] OS non supporté : {OS}")
+        sys.exit(f"[!] Unsupported OS: {OS}")
 
     cleanup()
 
     print("\n" + "─" * 50)
-    print("  ✅  Build terminé — cliquez sur l'icône pour lancer DailyHackerNews")
+    print("  ✅  Build complete — click the icon to launch DailyHackerNews")
     print("─" * 50 + "\n")
 
 

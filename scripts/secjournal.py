@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-secjournal.py — Daily Hacker News, journal de veille sécurité / pentest
-Agrège RSS feeds + items rss_watcher → journal structuré HTML + Markdown
+secjournal.py — Daily Hacker News, security / pentest intel journal
+Aggregates RSS feeds + rss_watcher items -> structured HTML + Markdown journal
 
 Usage :
     python3 scripts/secjournal.py                    # journal 1 jour, HTML
@@ -9,7 +9,7 @@ Usage :
     python3 scripts/secjournal.py --output both      # HTML + Markdown
     python3 scripts/secjournal.py --output md        # Markdown seul
     python3 scripts/secjournal.py --themes CVE,Exploit
-    python3 scripts/secjournal.py --max 30           # max articles/thème
+    python3 scripts/secjournal.py --max 30           # max articles/theme
     python3 scripts/secjournal.py --open             # ouvre le HTML auto
     python3 scripts/secjournal.py --export-opml      # exporte OPML
 
@@ -36,15 +36,15 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
 
-# ── Résolution des chemins ────────────────────────────────────────────────────
-# Objectif : pouvoir modifier sources / configs / knowledge SANS recompiler.
-# Frozen (.app) : on lit en priorité le dossier PROJET externe (éditable) ;
-# les données embarquées dans le binaire ne servent que de repli.
+# ── Path resolution ────────────────────────────────────────────────────
+# Goal: allow editing sources / configs / knowledge WITHOUT recompiling.
+# Frozen (.app): the external PROJECT dir (editable) is read first;
+# the data bundled into the binary is only a fallback.
 
 def _project_root() -> Optional[Path]:
-    """Dossier projet éditable (contient configs/ + scripts/), s'il existe."""
+    """Editable project dir (contains configs/ + scripts/), if it exists."""
     if getattr(sys, "frozen", False):
-        # …/DailyHackerNews.app/Contents/MacOS/DailyHackerNews_bin → on remonte les parents
+        # …/DailyHackerNews.app/Contents/MacOS/DailyHackerNews_bin -> walk up the parents
         for p in Path(sys.executable).resolve().parents:
             if (p / "configs").is_dir() and (p / "scripts").is_dir():
                 return p
@@ -55,12 +55,12 @@ PROJECT_ROOT = _project_root()
 _MEIPASS     = getattr(sys, "_MEIPASS", None)
 BUNDLE_ROOT  = Path(_MEIPASS) if _MEIPASS else None
 
-# Lecture des données : projet éditable > données embarquées > dossier exécutable
+# Data read: editable project > bundled data > executable dir
 DATA_ROOT = PROJECT_ROOT or BUNDLE_ROOT or Path(sys.executable).resolve().parent
-# Écriture : projet éditable si dispo, sinon ~/DailyHackerNews (bundle en lecture seule)
+# Write: editable project if available, else ~/DailyHackerNews (bundle is read-only)
 OUT_BASE  = PROJECT_ROOT or (Path.home() / "DailyHackerNews")
 
-# Compat : plusieurs modules réfèrent encore ROOT
+# Compat: several call sites still reference ROOT
 ROOT       = DATA_ROOT
 CONFIG_DIR = DATA_ROOT / "configs"
 OUT_DIR    = OUT_BASE / "out" / "journals"
@@ -84,11 +84,11 @@ except ImportError:
     HAS_FEEDPARSER = False
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SOURCES (étendues vs rss_watcher.py)
+# SOURCES (extended vs rss_watcher.py)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _BUILTIN_FEEDS: list[dict] = [
-    # ── CVE & Vulnérabilités ─────────────────────────────────────────────────
+    # ── CVE & Vulnerabilities ─────────────────────────────────────────────────
     dict(id="nvd-rss",        label="NVD (NIST)",          theme="CVE",
          url="https://nvd.nist.gov/feeds/xml/cve/misc/nvd-rss.xml"),
     dict(id="cvefeed-high",   label="CVEFeed HIGH/CRIT",   theme="CVE",
@@ -147,7 +147,7 @@ _BUILTIN_FEEDS: list[dict] = [
     dict(id="specterops",     label="SpecterOps",          theme="News-EN",
          url="https://posts.specterops.io/feed"),
 
-    # ── Actualités FR ────────────────────────────────────────────────────────
+    # ── News FR ────────────────────────────────────────────────────────
     dict(id="zataz",          label="ZATAZ",               theme="News-FR",
          url="https://www.zataz.com/feed/"),
     dict(id="korben",         label="Korben",              theme="News-FR",
@@ -178,9 +178,9 @@ _BUILTIN_FEEDS: list[dict] = [
 
 
 def load_feeds() -> list[dict]:
-    """Charge les sources depuis configs/feeds.yaml (éditable → aucune
-    recompilation nécessaire pour ajouter/retirer un flux). Repli sur la liste
-    intégrée si le fichier est absent, illisible, ou PyYAML indisponible."""
+    """Load the feed sources from configs/feeds.yaml (editable -> no rebuild
+    needed to add/remove a feed). Falls back to the built-in list if the file
+    is missing, unreadable, or PyYAML is unavailable."""
     fp = CONFIG_DIR / "feeds.yaml"
     if fp.is_file():
         try:
@@ -322,7 +322,7 @@ def _strip_tags(text: str, maxlen: int = 350) -> str:
 
 
 def _parse_rss_stdlib(raw: bytes, label: str, theme: str, cutoff: datetime) -> list[Article]:
-    """Parse RSS/Atom avec xml.etree (fallback sans feedparser)."""
+    """Parse RSS/Atom with xml.etree (fallback when feedparser is absent)."""
     import xml.etree.ElementTree as ET
     arts: list[Article] = []
     try:
@@ -417,7 +417,7 @@ def parse_kev_json(raw: bytes, label: str, cutoff: datetime) -> list[Article]:
 
 
 def parse_gh_md(raw: bytes, label: str, theme: str) -> list[Article]:
-    """Extrait les CVEs listés dans un README GitHub."""
+    """Extract the CVEs listed in a GitHub README."""
     arts: list[Article] = []
     text = raw.decode("utf-8", errors="ignore")
     blocks = re.findall(
@@ -519,7 +519,7 @@ def load_rss_watcher_items(cutoff: datetime) -> list[Article]:
             theme = CAT_TO_THEME.get(item.get("cat", ""), "News-EN")
             sfr   = ol.get("summary_fr", "")
             if isinstance(sfr, dict):
-                # certains items Ollama stockent {"fr": "...", ...} au lieu d'un str
+                # some Ollama items store {"fr": "...", ...} instead of a str
                 sfr = sfr.get("fr") or next(iter(sfr.values()), "") or ""
             elif not isinstance(sfr, str):
                 sfr = str(sfr)
@@ -549,10 +549,10 @@ def load_rss_watcher_items(cutoff: datetime) -> list[Article]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def compute_heat(art: Article) -> float:
-    """Score de chaleur : fraicheur * severite * KEV * exploit * poids source.
+    """Heat score: freshness * severity * KEV * exploit * source weight.
 
-    Un article publie il y a 1h avec KEV/critical exploite pesera >> qu'un
-    article de 5 jours sans severite. Utilise pour promouvoir le "gold now".
+    A 1h-old KEV/critical exploited article weighs >> a 5-day-old article
+    with no severity. Used to promote the "gold now" items.
     """
     now   = datetime.now(timezone.utc)
     hours = max(0.5, (now - art.published).total_seconds() / 3600.0)
@@ -565,11 +565,11 @@ def compute_heat(art: Article) -> float:
 
 
 def build_trending(by_theme: dict, min_sources: int = 2, top_k: int = 30) -> list[Article]:
-    """Detecte les articles trending :
-      1. CVEs mentionnees par >= min_sources feeds distincts dans la fenetre.
+    """Detect trending articles:
+      1. CVEs cited by >= min_sources distinct feeds within the window.
       2. Articles KEV publies dans les 24 dernieres heures.
       3. Top heat_score parmi les 24h les plus recentes.
-    Retourne une liste dedupliquee, triee par heat_score decroissant."""
+    Returns a deduplicated list sorted by descending heat_score."""
     all_arts: list[Article] = [a for arts in by_theme.values() for a in arts]
     if not all_arts:
         return []
@@ -589,7 +589,7 @@ def build_trending(by_theme: dict, min_sources: int = 2, top_k: int = 30) -> lis
 
     # 1a. CVEs multi-source
     for cve in hot_cves:
-        # garder l'article le plus "chaud" pour la CVE
+        # keep the "hottest" article for the CVE
         best = max(cve_arts[cve], key=compute_heat)
         trending[best.uid] = best
 
@@ -598,7 +598,7 @@ def build_trending(by_theme: dict, min_sources: int = 2, top_k: int = 30) -> lis
         if a.kev and (now - a.published).total_seconds() < 86400:
             trending[a.uid] = a
 
-    # 3. top-heat parmi les < 24h
+    # 3. top-heat among the < 24h items
     fresh = [a for a in all_arts if (now - a.published).total_seconds() < 86400]
     fresh.sort(key=compute_heat, reverse=True)
     for a in fresh[:top_k]:
@@ -615,7 +615,7 @@ def build_trending(by_theme: dict, min_sources: int = 2, top_k: int = 30) -> lis
 
 TRANSLATE_CACHE_PATH = OUT_BASE / "knowledge" / "rss" / "translation_cache.jsonl"
 _TR_CACHE: dict[str, str] = {}
-_TR_BACKEND: Optional[str] = None   # rempli au premier appel
+_TR_BACKEND: Optional[str] = None   # filled on first call
 
 
 def _load_translation_cache() -> None:
@@ -687,7 +687,7 @@ def _prompt_yes(question: str, auto: bool = False) -> bool:
     if auto:
         return True
     if not sys.stdin.isatty():
-        return False  # non-interactif : on n'installe rien sans consentement
+        return False  # non-interactive: never install without consent
     try:
         r = input(f"  {question} [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -696,13 +696,13 @@ def _prompt_yes(question: str, auto: bool = False) -> bool:
 
 
 def _install_ollama() -> bool:
-    """Installe Ollama via le script officiel (macOS/Linux) ou pointe vers
-    la page de telechargement (Windows). Bloque jusqu'a fin d'install."""
+    """Install Ollama via the official script (macOS/Linux) or point to the
+    download page (Windows). Blocks until the install finishes."""
     import platform
     system = platform.system()
-    print(f"  {c('cyan','⇩')} installation d'Ollama pour {system}…")
+    print(f"  {c('cyan','⇩')} installing Ollama for {system}…")
     if system in ("Darwin", "Linux"):
-        # brew si dispo sur macOS, sinon script officiel
+        # brew if available on macOS, otherwise the official script
         if system == "Darwin" and _which("brew"):
             r = subprocess.run(["brew", "install", "ollama"])
             return r.returncode == 0
@@ -710,22 +710,22 @@ def _install_ollama() -> bool:
                            shell=True)
         return r.returncode == 0
     if system == "Windows":
-        print("  Windows : telechargez depuis https://ollama.com/download/windows")
-        print("           puis relancez la commande.")
+        print("  Windows: download from https://ollama.com/download/windows")
+        print("           then re-run the command.")
         return False
-    print(f"  OS non gere ({system})")
+    print(f"  unsupported OS ({system})")
     return False
 
 
 def _start_ollama_daemon(binary: str, wait_s: int = 20) -> bool:
-    """Lance `ollama serve` en tache de fond, attend qu'il reponde."""
+    """Start `ollama serve` in the background, wait until it responds."""
     try:
         subprocess.Popen([binary, "serve"],
                          stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL,
                          start_new_session=True)
     except Exception as e:
-        print(f"  {c('red','✗')} impossible de lancer 'ollama serve' : {e}")
+        print(f"  {c('red','✗')} could not start 'ollama serve': {e}")
         return False
     for _ in range(wait_s):
         if _ollama_daemon_up():
@@ -735,55 +735,55 @@ def _start_ollama_daemon(binary: str, wait_s: int = 20) -> bool:
 
 
 def _pull_ollama_model(binary: str, model: str) -> bool:
-    """Pull bloquant, affiche la progression Ollama."""
-    print(f"  {c('cyan','⇩')} pull du modele {model} (une seule fois, ~2 GB)…")
+    """Blocking pull, shows Ollama progress."""
+    print(f"  {c('cyan','⇩')} pulling model {model} (one-time, ~2 GB)…")
     r = subprocess.run([binary, "pull", model])
     return r.returncode == 0
 
 
 def ensure_ollama_ready(auto: bool = False, install_missing: bool = True) -> bool:
-    """Setup complet Ollama pour traduction locale privee.
+    """Full Ollama setup for private local translation.
 
-    - Detecte le binaire, l'installe si absent (avec confirmation utilisateur)
-    - Lance le daemon si pas up
-    - Pull le modele de traduction si absent
-    - Retourne True si tout est pret, False si on doit fallback
+    - Detect the binary, install it if missing (with user confirmation)
+    - Start the daemon if it is not up
+    - Pull the translation model if missing
+    - Return True if everything is ready, False if we must fall back
 
-    auto=True  : pas de prompt (utile pour CI, .app relance)
-    install_missing=False : n'installe jamais, se limite au probe
+    auto=True  : no prompt (useful for CI, .app relaunch)
+    install_missing=False : never install, probe only
     """
     model = _ollama_model()
 
-    # 1. binaire present ?
+    # 1. binary present?
     binary = _which("ollama")
     if not binary:
         if not install_missing:
             return False
-        if not _prompt_yes("Ollama n'est pas installe. L'installer maintenant (~50 MB) ?", auto):
+        if not _prompt_yes("Ollama is not installed. Install it now (~50 MB)?", auto):
             return False
         if not _install_ollama():
             return False
         binary = _which("ollama")
         if not binary:
-            # sur macOS avec brew, PATH peut ne pas etre rafraichi immediatement
+            # on macOS with brew, PATH may not be refreshed immediately
             for candidate in ("/usr/local/bin/ollama", "/opt/homebrew/bin/ollama", "/usr/bin/ollama"):
                 if os.path.exists(candidate):
                     binary = candidate
                     break
         if not binary:
-            print(f"  {c('red','✗')} Ollama installe mais binaire introuvable dans le PATH.")
+            print(f"  {c('red','✗')} Ollama installed but binary not found in PATH.")
             return False
 
-    # 2. daemon up ?
+    # 2. daemon up?
     if not _ollama_daemon_up():
-        print(f"  {c('cyan','⇢')} demarrage du daemon Ollama…")
+        print(f"  {c('cyan','⇢')} starting the Ollama daemon…")
         if not _start_ollama_daemon(binary):
-            print(f"  {c('red','✗')} daemon Ollama ne repond pas.")
+            print(f"  {c('red','✗')} Ollama daemon not responding.")
             return False
 
-    # 3. modele present ?
+    # 3. model present?
     if not _ollama_model_present(model):
-        if not _prompt_yes(f"Modele {model} absent (~2 GB). Le telecharger maintenant ?", auto):
+        if not _prompt_yes(f"Model {model} missing (~2 GB). Download it now?", auto):
             return False
         if not _pull_ollama_model(binary, model):
             print(f"  {c('red','✗')} pull de {model} a echoue.")
@@ -803,8 +803,8 @@ LANG_NAMES = {
 
 
 def _try_ollama(text: str, target: str = "en", timeout: int = 20) -> Optional[str]:
-    """Traduit vers `target` via Ollama local. `target` : code ISO 639-1
-    (en/fr/es/de/zh/ja...). Utilise ensure_ollama_ready() en amont."""
+    """Translate to `target` via local Ollama. `target`: ISO 639-1 code
+    (en/fr/es/de/zh/ja...). Call ensure_ollama_ready() beforehand."""
     host   = _ollama_host()
     model  = _ollama_model()
     tname  = LANG_NAMES.get(target, target)
@@ -824,7 +824,7 @@ def _try_ollama(text: str, target: str = "en", timeout: int = 20) -> Optional[st
 
 
 def _try_deep_translator(text: str, target: str = "en") -> Optional[str]:
-    """Traduit vers `target` via deep_translator (GoogleTranslator, pas de cle)."""
+    """Translate to `target` via deep_translator (GoogleTranslator, no key)."""
     try:
         from deep_translator import GoogleTranslator
         return GoogleTranslator(source="auto", target=target).translate(text[:4900])
@@ -833,9 +833,9 @@ def _try_deep_translator(text: str, target: str = "en") -> Optional[str]:
 
 
 def translate(text: str, target: str = "en", max_len: int = 900) -> str:
-    """Traduit vers la langue cible avec cache + fallback silencieux.
-    target : code ISO ("en" par defaut, "fr" pour francais, etc.).
-    Retourne "" si aucun backend dispo ou texte vide."""
+    """Translate to the target language with cache + silent fallback.
+    target : ISO code ("en" by default, "fr" for French, etc.).
+    Returns "" if no backend is available or the text is empty."""
     global _TR_BACKEND
     text = (text or "").strip()
     if not text:
@@ -862,7 +862,7 @@ def translate(text: str, target: str = "en", max_len: int = 900) -> str:
 
 
 def translate_to_en(text: str, max_len: int = 900) -> str:
-    """Alias retrocompatible : traduit vers EN."""
+    """Backward-compatible alias: translate to EN."""
     return translate(text, target="en", max_len=max_len)
 
 
@@ -1172,7 +1172,7 @@ def render_json(by_theme: dict, args, total: int) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STORE DURABLE + RECHERCHE (interface réutilisable par d'autres agents/scripts)
+# DURABLE STORE + SEARCH (reusable interface for other agents/scripts)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _art_to_record(a: Article, theme: str) -> dict:
@@ -1191,8 +1191,8 @@ def _art_to_record(a: Article, theme: str) -> dict:
 
 
 def persist_store(by_theme: dict) -> int:
-    """Ajoute les items du run au store JSONL (dédup par URL, cap STORE_CAP).
-    C'est le backlog interrogé par search_journal() / --search."""
+    """Append this run's items to the JSONL store (dedup by URL, cap STORE_CAP).
+    This is the backlog queried by search_journal() / --search."""
     try:
         STORE.parent.mkdir(parents=True, exist_ok=True)
         existing: dict[str, dict] = {}
@@ -1243,9 +1243,9 @@ def _load_store_records() -> list[dict]:
 def search_journal(query: str, limit: int = 50, theme: str = "", records: list[dict] | None = None) -> list[dict]:
     """Recherche plein-texte (AND sur les termes) dans le store Daily Hacker News.
 
-    Interface stable destinée à d'autres agents/scripts : importable directement
+    Stable interface for other agents/scripts: importable directly
     (`from secjournal import search_journal`) ou via `--search` en CLI/JSON.
-    Trie par date de publication décroissante.
+    Sorted by descending publication date.
     """
     recs  = records if records is not None else _load_store_records()
     terms = [t for t in re.split(r"\s+", query.strip().lower()) if t]
@@ -1323,7 +1323,7 @@ def render_md(by_theme: dict, args, total: int) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TERMINAL DISPLAY (résumé)
+# TERMINAL DISPLAY (summary)
 # ══════════════════════════════════════════════════════════════════════════════
 
 ANSI = {
@@ -1531,14 +1531,14 @@ def main() -> None:
     cutoff       = datetime.now(timezone.utc) - timedelta(days=args.days)
     period       = f"{args.days}d" if args.days > 1 else "24h"
 
-    # ── Sélection des feeds ───────────────────────────────────────────────────
+    # ── Feed selection ───────────────────────────────────────────────────
     feeds = ALL_FEEDS
     if theme_filter:
         feeds = [f for f in feeds if f["theme"] in theme_filter]
 
     print(c("bold", f"\n🛡  Daily Hacker News · {period} · {len(feeds)} sources\n"))
 
-    # ── Fetch parallèle ───────────────────────────────────────────────────────
+    # ── Parallel fetch ───────────────────────────────────────────────────────
     all_arts: list[Article] = []
     n_ok = 0
 
@@ -1569,13 +1569,13 @@ def main() -> None:
         if n_dead:
             print(f"\n{c('bold','⚠')} {n_dead} dead feed(s) — run --verify-feeds for a full audit")
 
-    # ── Intégrer rss_watcher items (Ollama-enriched) ──────────────────────────
+    # ── Merge rss_watcher items (Ollama-enriched) ──────────────────────────
     rw_arts = load_rss_watcher_items(cutoff)
     if rw_arts:
         print(f"\n  {c('cyan','+')} rss_watcher: {len(rw_arts)} Ollama items loaded")
         all_arts.extend(rw_arts)
 
-    # ── Déduplication ─────────────────────────────────────────────────────────
+    # ── Deduplication ─────────────────────────────────────────────────────────
     seen: set[str] = set()
     unique: list[Article] = []
     for art in all_arts:
@@ -1583,7 +1583,7 @@ def main() -> None:
             seen.add(art.uid)
             unique.append(art)
 
-    # ── Grouper par thème ─────────────────────────────────────────────────────
+    # ── Group by theme ─────────────────────────────────────────────────────
     by_theme: dict[str, list[Article]] = {t: [] for t in THEME_ORDER}
     for art in sorted(unique, key=lambda a: a.published, reverse=True):
         bucket = by_theme.get(art.theme)
@@ -1591,7 +1591,7 @@ def main() -> None:
             if theme_filter is None or art.theme in theme_filter:
                 bucket.append(art)
 
-    # ── Heat score sur tous les articles retenus ─────────────────────────────
+    # ── Heat score over all retained articles ─────────────────────────────
     for arts in by_theme.values():
         for a in arts:
             a.heat = compute_heat(a)
@@ -1606,13 +1606,13 @@ def main() -> None:
     # ── Traduction EN (auto-setup Ollama > fallback deep_translator) ─────────
     if args.translate:
         _load_translation_cache()
-        # Auto-setup Ollama en premier (prompt Y/n sauf --auto-install / --no-install)
+        # Auto-setup Ollama first (Y/n prompt unless --auto-install / --no-install)
         # Fallback silencieux vers deep_translator si Ollama pas disponible.
         if not args.no_install and not _ollama_daemon_up():
             ready = ensure_ollama_ready(auto=args.auto_install,
                                         install_missing=not args.no_install)
             if not ready:
-                # message discret, on continue avec deep_translator si dispo
+                # quiet notice, keep going with deep_translator if available
                 print(f"  {c('grey','ℹ')} translation: falling back to deep_translator (Ollama unavailable)")
 
         # Everything must read in English. Any article whose source language is
@@ -1671,7 +1671,7 @@ def main() -> None:
 
     print_summary(by_theme)
 
-    # ── Génération des fichiers ───────────────────────────────────────────────
+    # ── File generation ───────────────────────────────────────────────
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     html_path = None
 
@@ -1699,7 +1699,7 @@ def main() -> None:
     json_path.write_text(json_str, encoding="utf-8")
     print(f"{c('green','✓')} JSON  → {json_path}")
 
-    # Auto-open : par défaut oui quand lancé en .app (frozen), sinon opt-in --open
+    # Auto-open: on by default when run as .app (frozen), else opt-in via --open
     auto_open = args.open
     if auto_open is None:
         auto_open = getattr(sys, "frozen", False)

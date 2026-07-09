@@ -432,28 +432,28 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--host", default=os.environ.get("DHN_HOST", "0.0.0.0"),
-                    help="interface d'ecoute (defaut: 0.0.0.0). "
-                         "127.0.0.1 = local uniquement.")
+                    help="listen interface (default: 0.0.0.0). "
+                         "127.0.0.1 = local only.")
     ap.add_argument("--port", type=int,
                     default=int(os.environ.get("DHN_PORT", "8000")))
     ap.add_argument("--cert", default=os.environ.get("DHN_CERT", ""),
-                    help="chemin certificat TLS (PEM). Requiert --key.")
+                    help="TLS certificate path (PEM). Requires --key.")
     ap.add_argument("--key",  default=os.environ.get("DHN_KEY", ""),
-                    help="chemin cle privee TLS (PEM). Requiert --cert.")
+                    help="TLS private key path (PEM). Requires --cert.")
     ap.add_argument("--auth", default=os.environ.get("DHN_AUTH", ""),
-                    help="basic auth 'user:password' (optionnel)")
+                    help="basic auth 'user:password' (optional)")
     ap.add_argument("--allow", action="append", default=[],
-                    help="IP ou CIDR autorise (repetable). "
-                         "Sans, tout le monde peut se connecter.")
+                    help="allowed IP or CIDR (repeatable). "
+                         "Without it, anyone can connect.")
     ap.add_argument("--rate-max", type=int, default=100,
-                    help="max requetes par IP / fenetre (defaut: 100)")
+                    help="max requests per IP / window (default: 100)")
     ap.add_argument("--rate-window", type=int, default=60,
-                    help="fenetre du rate limit en secondes (defaut: 60)")
+                    help="rate-limit window in seconds (default: 60)")
     ap.add_argument("--log", type=Path, default=None,
-                    help="fichier de log JSONL (append). stdout dans tous les cas.")
+                    help="JSONL log file (append). stdout is always used too.")
     ap.add_argument("--trust-proxy", action="store_true",
-                    help="honorer CF-Connecting-IP / X-Forwarded-For (proxy en amont). "
-                         "N'active que derriere Cloudflare Tunnel ou reverse-proxy de confiance.")
+                    help="honour CF-Connecting-IP / X-Forwarded-For (upstream proxy). "
+                         "Enable ONLY behind Cloudflare Tunnel or a trusted reverse proxy.")
     args = ap.parse_args()
 
     if not JOURNAL_DIR.is_dir():
