@@ -77,8 +77,8 @@ jobs:
 
       - name: Bandit SAST
         run: |
-          pip install bandit
-          bandit -r scripts -ll -x tests -q
+          pip install "bandit[toml]"
+          bandit -r scripts -ll -q -c pyproject.toml
 
       - name: Gitleaks secret scan
         uses: gitleaks/gitleaks-action@v2

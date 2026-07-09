@@ -111,3 +111,16 @@ ignore = ["E501"]   # line-length handled by black
 [tool.black]
 line-length    = 100
 target-version = ["py39", "py310", "py311", "py312"]
+
+# ── bandit (SAST) ─────────────────────────────────────────────────────────────
+# These checks are inherent to what this tool *is* and are accepted by design
+# (not silenced blindly):
+#   B310 urlopen   — the aggregator fetches RSS/HTTP feeds; that is its purpose.
+#   B314 XML parse — RSS/Atom is parsed with xml.etree; inputs are public feeds.
+#   B104 bind all  — the self-host server intentionally binds 0.0.0.0 (opt-in;
+#                    use serve.sh --local or HOST=127.0.0.1 to restrict).
+# Everything else stays enforced — e.g. the MD5 uses are fixed with
+# usedforsecurity=False rather than skipped.
+[tool.bandit]
+skips        = ["B310", "B314", "B104"]
+exclude_dirs = ["tests", "_build_tmp", "out", "knowledge", "deploy"]

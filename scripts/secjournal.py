@@ -244,7 +244,7 @@ class Article:
 
     @property
     def uid(self) -> str:
-        return hashlib.md5(self.url.encode()).hexdigest()[:10]
+        return hashlib.md5(self.url.encode(), usedforsecurity=False).hexdigest()[:10]
 
     @property
     def age_str(self) -> str:
@@ -835,7 +835,7 @@ def translate(text: str, target: str = "en", max_len: int = 900) -> str:
     if not text:
         return ""
     text = text[:max_len]
-    key  = hashlib.md5((target + "\x00" + text).encode("utf-8")).hexdigest()
+    key  = hashlib.md5((target + "\x00" + text).encode("utf-8"), usedforsecurity=False).hexdigest()
     _load_translation_cache()
     if key in _TR_CACHE:
         return _TR_CACHE[key]
