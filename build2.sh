@@ -171,7 +171,7 @@ launch_cloudflared() {
   # Wait for the tunnel URL to appear. `set -eo pipefail` is a hazard here
   # because grep exits 1 when no match yet — disable during the poll loop.
   local url=""
-  set +eo pipefail
+  set +eo pipefail   # grep exits 1 while there is no match yet
   for i in $(seq 1 45); do
     sleep 1
     # 1. banner in log
@@ -186,7 +186,7 @@ launch_cloudflared() {
       break
     fi
   done
-  set -eo pipefail
+  set -euo pipefail   # restore the FULL strict mode (including -u)
   if [ -z "$url" ]; then
     err "url tunnel introuvable apres 30s — voir $CF_LOG"
     stop
@@ -205,23 +205,25 @@ launch_cloudflared() {
 # ── enriched log streamer ────────────────────────────────────────────────────
 stream_logs() {
   info "log stream (Ctrl-C = quit tail; process reste vivant sauf --daemon)"
-  # tail the access log and pretty-print JSON records
-  tail -F -n 0 "$ACCESS_LOG" 2>/dev/null | while IFS= read -r line; do
-    "$PY" -c "
+  # tail the access log and pretty-print JSON records.
+  # SECURITY: log lines contain attacker-controlled fields (path/referrer/UA
+  # from public tunnel visitors). Feed them to Python over STDIN — never splice
+  # them into the -c source, or a crafted request could execute arbitrary code.
+  tail -F -n 0 "$ACCESS_LOG" 2>/dev/null | "$PY" -u -c '
 import sys, json
-try:
-    r = json.loads('''$line''')
-except Exception:
-    print('''$line''')
-    sys.exit()
-ip = r.get('ip','?'); country = r.get('country','-')
-os_ = r.get('os','?');  br  = r.get('browser','?')
-dev = r.get('device','?'); path = r.get('path','?')
-st = r.get('status','?')
-ref = r.get('ref','-')
-print(f\"[{r.get('t','?')[11:19]}] {st} {country:>2} {ip:<15} {os_:<12} {br:<8} {dev:<7} {path}   ref={ref[:60]}\")
-"
-  done
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    try:
+        r = json.loads(line)
+    except Exception:
+        print(line); continue
+    t   = str(r.get("t", "?"))[11:19]
+    ip  = r.get("ip", "?"); country = r.get("country", "-")
+    os_ = r.get("os", "?"); br = r.get("browser", "?")
+    dev = r.get("device", "?"); path = r.get("path", "?")
+    st  = r.get("status", "?"); ref = str(r.get("ref", "-"))[:60]
+    print(f"[{t}] {st} {country:>2} {ip:<15} {os_:<12} {br:<8} {dev:<7} {path}   ref={ref}")
+'
 }
 
 # ── dispatch ─────────────────────────────────────────────────────────────────

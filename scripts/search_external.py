@@ -239,8 +239,9 @@ def search_huggingface(query: str, limit: int = 20) -> list[dict]:
             continue
         for r in data:
             name = r.get("id") or r.get("modelId") or r.get("datasetId") or ""
-            desc = (r.get("description") or r.get("cardData", {}).get(
-                "description") or "")[:400]
+            # cardData is frequently null on HF → guard before .get()
+            card = r.get("cardData") or {}
+            desc = (r.get("description") or card.get("description") or "")[:400]
             downloads = r.get("downloads")
             out.append({
                 "source":      "huggingface",

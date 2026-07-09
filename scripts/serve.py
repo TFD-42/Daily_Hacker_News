@@ -17,7 +17,7 @@ Design principles
 - HTTPS supported via `--cert` / `--key`.
 - Optional HTTP Basic auth.
 - Optional IP allowlist.
-- Rate limit per remote IP (token bucket in memory).
+- Rate limit per remote IP (sliding-window log in memory).
 - Structured request log to stdout (+ optional file).
 - Graceful shutdown on SIGTERM / SIGINT.
 
@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hmac
 import http.server
 import ipaddress
 import json
@@ -120,10 +121,24 @@ class RateLimiter:
         self.win = window_s
         self.buckets: dict[str, deque] = {}
         self.lock = Lock()
+        self._since_reap = 0
+
+    def _reap(self, now: float) -> None:
+        """Evict drained buckets so the dict can't grow unbounded across many
+        distinct (or spoofed) source IPs. Amortised: runs every ~512 requests."""
+        self._since_reap += 1
+        if self._since_reap < 512:
+            return
+        self._since_reap = 0
+        dead = [k for k, dq in self.buckets.items()
+                if not dq or now - dq[-1] > self.win]
+        for k in dead:
+            del self.buckets[k]
 
     def allow(self, ip: str) -> bool:
         now = time.time()
         with self.lock:
+            self._reap(now)
             q = self.buckets.get(ip)
             if q is None:
                 q = deque()
@@ -166,7 +181,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return cf.split(",")[0].strip()
         xff = self.headers.get("X-Forwarded-For")
         if xff and Cfg.trust_proxy:
-            return xff.split(",")[0].strip()
+            # Take the RIGHTMOST value — it is appended by the nearest (trusted)
+            # proxy and reflects who actually connected to it. The leftmost
+            # entries are client-supplied and therefore spoofable.
+            return xff.split(",")[-1].strip()
         return self.client_address[0]
 
     @staticmethod
@@ -264,7 +282,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _auth_ok(self) -> bool:
         if not Cfg.auth_header:
             return True
-        return self.headers.get("Authorization", "") == Cfg.auth_header
+        # Constant-time compare so response timing can't leak the credential.
+        return hmac.compare_digest(self.headers.get("Authorization", ""), Cfg.auth_header)
 
     # -- resolution -----------------------------------------------------------
 
