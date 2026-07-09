@@ -188,9 +188,9 @@ def load_feeds() -> list[dict]:
             ]
             if norm:
                 return norm
-            print(f"[!] {fp.name} vide/invalide — liste intégrée utilisée", file=sys.stderr)
+            print(f"[!] {fp.name} empty/invalid — using built-in feed list", file=sys.stderr)
         except Exception as e:
-            print(f"[!] {fp.name} ignoré ({e}) — liste intégrée utilisée", file=sys.stderr)
+            print(f"[!] {fp.name} ignored ({e}) — using built-in feed list", file=sys.stderr)
     return _BUILTIN_FEEDS
 
 
@@ -252,10 +252,10 @@ class Article:
         delta = now - self.published
         h = int(delta.total_seconds() / 3600)
         if h < 1:
-            return "à l'instant"
+            return "just now"
         if h < 24:
-            return f"{h}h"
-        return f"{delta.days}j"
+            return f"{h}h ago"
+        return f"{delta.days}d ago"
 
     @property
     def date_fmt(self) -> str:
@@ -1030,7 +1030,7 @@ def _build_card(art: Article) -> str:
 def render_html(by_theme: dict, args, total: int, n_feeds: int, n_ok: int) -> str:
     now    = datetime.now()
     ds     = now.strftime("%d/%m/%Y %H:%M")
-    period = f"{args.days}j" if args.days > 1 else "24h"
+    period = f"{args.days}d" if args.days > 1 else "24h"
 
     # stats
     stats = ""
@@ -1102,8 +1102,8 @@ const q=document.getElementById('q');
 function btn(label,target,dis,on){{return '<button class="pbtn'+(on?' on':'')+'"'+(dis?' disabled':'')+' data-t="'+target+'">'+label+'</button>';}}
 function pager(sec,pages,page,count){{
   const nav=sec.querySelector('.pager');
-  if(pages<=1){{nav.innerHTML=count?('<span class="pinfo">'+count+' résultat'+(count>1?'s':'')+'</span>'):'';return;}}
-  let h='<span class="pinfo">'+count+' résultats · page '+page+'/'+pages+'</span><span class="pbtns">';
+  if(pages<=1){{nav.innerHTML=count?('<span class="pinfo">'+count+' result'+(count>1?'s':'')+'</span>'):'';return;}}
+  let h='<span class="pinfo">'+count+' results · page '+page+'/'+pages+'</span><span class="pbtns">';
   h+=btn('‹',page>1?page-1:1,page===1,false);
   for(let p=1;p<=pages;p++){{if(p===1||p===pages||Math.abs(p-page)<=2)h+=btn(p,p,false,p===page);else if(Math.abs(p-page)===3)h+='<span class="pdots">…</span>';}}
   h+=btn('›',page<pages?page+1:pages,page===pages,false)+'</span>';nav.innerHTML=h;
@@ -1210,7 +1210,7 @@ def persist_store(by_theme: dict) -> int:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         return len(records)
     except Exception as e:
-        print(f"[!] store non écrit ({e})", file=sys.stderr)
+        print(f"[!] store not written ({e})", file=sys.stderr)
         return 0
 
 
@@ -1259,7 +1259,7 @@ def search_journal(query: str, limit: int = 50, theme: str = "", records: list[d
 def render_md(by_theme: dict, args, total: int) -> str:
     now = datetime.now()
     ds  = now.strftime("%d/%m/%Y %H:%M")
-    period = f"{args.days}j" if args.days > 1 else "24h"
+    period = f"{args.days}d" if args.days > 1 else "24h"
     lines = [
         f"# 🛡 Daily Hacker News — {now.strftime('%d/%m/%Y')}",
         "",
@@ -1357,69 +1357,69 @@ def print_summary(by_theme: dict) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Daily Hacker News — journal de veille sécurité / pentest",
+        description="Daily Hacker News — security / pentest intel journal",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""
-        Exemples :
+        Examples:
           python3 scripts/secjournal.py                      # 24h, HTML
-          python3 scripts/secjournal.py --days 7             # semaine
+          python3 scripts/secjournal.py --days 7             # last week
           python3 scripts/secjournal.py --output both        # HTML + Markdown
-          python3 scripts/secjournal.py --themes CVE,Exploit # thèmes ciblés
-          python3 scripts/secjournal.py --max 30             # max 30/thème
-          python3 scripts/secjournal.py --open               # ouvre le HTML
-          python3 scripts/secjournal.py --export-opml        # exporte OPML
-          python3 scripts/secjournal.py --no-fetch           # rss_watcher seul
-          python3 scripts/secjournal.py --search "log4j"     # recherche (JSON)
+          python3 scripts/secjournal.py --themes CVE,Exploit # selected themes
+          python3 scripts/secjournal.py --max 30             # max 30/theme
+          python3 scripts/secjournal.py --open               # open the HTML
+          python3 scripts/secjournal.py --export-opml        # export OPML
+          python3 scripts/secjournal.py --no-fetch           # rss_watcher only
+          python3 scripts/secjournal.py --search "log4j"     # search (JSON)
         """),
     )
     ap.add_argument("--days",        type=int, default=1,
-                    help="fenêtre temporelle en jours (défaut: 1)")
+                    help="time window in days (default: 1)")
     ap.add_argument("--output",      choices=["html","md","both"], default="html",
-                    help="format de sortie")
+                    help="output format")
     ap.add_argument("--themes",      default="",
-                    help="CSV de thèmes: CVE,Exploit,News-EN,News-FR,Outils,CTF")
+                    help="CSV of themes: CVE,Exploit,News-EN,News-FR,Outils,CTF")
     ap.add_argument("--max",         type=int, default=500,
-                    help="articles conservés par thème (défaut: 500 = 10 pages × 50)")
+                    help="articles kept per theme (default: 500 = 10 pages x 50)")
     ap.add_argument("--per-page",    dest="per_page", type=int, default=50,
-                    help="articles par page dans le HTML (défaut: 50)")
+                    help="articles per page in the HTML (default: 50)")
     ap.add_argument("--open",        dest="open", action="store_true", default=None,
-                    help="ouvre le HTML dans le navigateur (défaut en .app)")
+                    help="open the HTML in the browser (default when run as .app)")
     ap.add_argument("--no-open",     dest="open", action="store_false",
-                    help="ne pas ouvrir le HTML automatiquement")
+                    help="do not open the HTML automatically")
     ap.add_argument("--export-opml", action="store_true",
-                    help="exporte tous les feeds RSS en .opml")
+                    help="export all RSS feeds as .opml")
     ap.add_argument("--no-fetch",    action="store_true",
-                    help="n'utilise que les items de rss_watcher (sans refetch)")
+                    help="use rss_watcher items only (no refetch)")
     ap.add_argument("--workers",     type=int, default=12,
-                    help="threads parallèles (défaut: 12)")
+                    help="parallel threads (default: 12)")
     ap.add_argument("--search",      default="",
-                    help="mode recherche : interroge le store et sort du JSON (pour agents/scripts)")
+                    help="search mode: query the store and emit JSON (for agents/scripts)")
     ap.add_argument("--limit",       type=int, default=50,
-                    help="nombre max de résultats pour --search (défaut: 50)")
+                    help="max results for --search (default: 50)")
     ap.add_argument("--sources",     default="local",
-                    help="csv sources : local,github,gitee,gitlab,huggingface,codeberg "
-                         "(défaut: local). Exemple : --sources local,github,gitee")
+                    help="csv sources: local,github,gitee,gitlab,huggingface,codeberg "
+                         "(default: local). Example: --sources local,github,gitee")
     ap.add_argument("--lang",        default="en", choices=["en","fr","es","de","zh","ja"],
-                    help="langue cible pour la traduction des résultats (défaut: en)")
+                    help="target language for translating --search results (default: en)")
     ap.add_argument("--no-translate-results", dest="translate_results",
                     action="store_false", default=True,
-                    help="ne traduit pas les résultats de --search")
+                    help="do not translate --search results")
     ap.add_argument("--translate",   dest="translate", action="store_true", default=True,
-                    help="auto-traduit les résumés en EN via Ollama/deep_translator (défaut: on)")
+                    help="auto-translate non-English titles+summaries to EN via Ollama/deep_translator (default: on)")
     ap.add_argument("--no-translate",dest="translate", action="store_false",
-                    help="désactive la traduction EN (plus rapide, moins de trafic)")
+                    help="disable EN translation (faster, less traffic)")
     ap.add_argument("--translate-max", type=int, default=200,
                     help="max articles translated per run (default: 200; results are cached)")
     ap.add_argument("--setup-translate", action="store_true",
-                    help="installe Ollama + pull le modèle de traduction puis quitte (setup interactif)")
+                    help="install Ollama + pull the translation model, then exit (interactive setup)")
     ap.add_argument("--auto-install",  action="store_true",
-                    help="installe Ollama sans demander (utile en CI ou pour un .app)")
+                    help="install Ollama without asking (useful in CI or for a .app)")
     ap.add_argument("--no-install",    action="store_true",
-                    help="ne jamais proposer d'installer Ollama — fallback direct")
+                    help="never offer to install Ollama — fall back directly")
     ap.add_argument("--no-trending", dest="trending", action="store_false", default=True,
-                    help="désactive la section Trending Now")
+                    help="disable the Trending Now section")
     ap.add_argument("--verify-feeds", action="store_true",
-                    help="probe chaque feed URL et sort un rapport JSON (dead/quiet/ok)")
+                    help="probe every feed URL and emit a JSON report (dead/quiet/ok)")
     args = ap.parse_args()
 
     if args.setup_translate:
@@ -1523,7 +1523,7 @@ def main() -> None:
 
     theme_filter = {t.strip() for t in args.themes.split(",")} if args.themes.strip() else None
     cutoff       = datetime.now(timezone.utc) - timedelta(days=args.days)
-    period       = f"{args.days}j" if args.days > 1 else "24h"
+    period       = f"{args.days}d" if args.days > 1 else "24h"
 
     # ── Sélection des feeds ───────────────────────────────────────────────────
     feeds = ALL_FEEDS
@@ -1566,7 +1566,7 @@ def main() -> None:
     # ── Intégrer rss_watcher items (Ollama-enriched) ──────────────────────────
     rw_arts = load_rss_watcher_items(cutoff)
     if rw_arts:
-        print(f"\n  {c('cyan','+')} rss_watcher: {len(rw_arts)} items Ollama chargés")
+        print(f"\n  {c('cyan','+')} rss_watcher: {len(rw_arts)} Ollama items loaded")
         all_arts.extend(rw_arts)
 
     # ── Déduplication ─────────────────────────────────────────────────────────
