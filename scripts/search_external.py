@@ -310,10 +310,13 @@ def search_all(query: str, sources: list[str], limit: int = 20) -> list[dict]:
             continue
         try:
             for r in fn(query, limit=limit):
-                url = r.get("url") or r.get("title", "")
-                if url in seen:
-                    continue
-                seen.add(url)
+                key = (r.get("url") or r.get("title") or "").strip()
+                # only dedup on a real key — empty url+title must not collapse
+                # distinct results into one "duplicate"
+                if key:
+                    if key in seen:
+                        continue
+                    seen.add(key)
                 out.append(r)
         except Exception as e:
             print(f"[!] {s} failed: {e}", file=sys.stderr)

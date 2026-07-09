@@ -82,10 +82,19 @@ build_cmd() {
   printf '%s\n' "${a[@]}"
 }
 
+# _owned <pid> — true only if PID is live AND its command looks like our
+# server. Guards against a recycled PID being mistaken for ours and killed.
+_owned() {
+  local pid="$1"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
+  ps -p "$pid" -o command= 2>/dev/null | grep -q "serve.py" || return 1
+  return 0
+}
+
 status() {
   if [ -f "$PID_FILE" ]; then
     local pid; pid=$(cat "$PID_FILE" 2>/dev/null || echo)
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    if _owned "$pid"; then
       ok "running (PID $pid) — log: $LOG_FILE"
       return 0
     fi
@@ -95,7 +104,7 @@ status() {
 }
 
 start_bg() {
-  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+  if [ -f "$PID_FILE" ] && _owned "$(cat "$PID_FILE" 2>/dev/null)"; then
     err "already running (PID $(cat "$PID_FILE"))"; exit 2
   fi
   local -a cmd
@@ -117,7 +126,7 @@ start_bg() {
 stop_bg() {
   [ -f "$PID_FILE" ] || { warn "no pid file"; return 0; }
   local pid; pid=$(cat "$PID_FILE" 2>/dev/null || echo)
-  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+  if ! _owned "$pid"; then
     warn "not running"; rm -f "$PID_FILE"; return 0
   fi
   info "stopping PID $pid…"

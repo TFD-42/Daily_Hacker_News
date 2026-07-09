@@ -70,15 +70,28 @@ check_deps() {
 }
 
 # ── running check ────────────────────────────────────────────────────────────
-alive() { [ -f "$1" ] && kill -0 "$(cat "$1" 2>/dev/null)" 2>/dev/null; }
+# alive <pidfile> [cmd-pattern] — true only if the PID is live AND (when a
+# pattern is given) the process command matches it. The pattern guards against
+# a recycled PID being mistaken for ours and later killed.
+alive() {
+  local pf="$1" pat="${2:-}"
+  [ -f "$pf" ] || return 1
+  local pid; pid=$(cat "$pf" 2>/dev/null)
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  if [ -n "$pat" ]; then
+    ps -p "$pid" -o command= 2>/dev/null | grep -q "$pat" || return 1
+  fi
+  return 0
+}
 
 status() {
   local any=0
-  if alive "$SERVE_PID"; then
+  if alive "$SERVE_PID" "serve.py"; then
     ok "serve.py running (PID $(cat "$SERVE_PID")) — port $PORT"
     any=1
   fi
-  if alive "$CF_PID"; then
+  if alive "$CF_PID" "cloudflared"; then
     ok "cloudflared running (PID $(cat "$CF_PID"))"
     any=1
   fi
@@ -93,8 +106,10 @@ status() {
 
 stop() {
   local stopped=0
-  for pf in "$SERVE_PID" "$CF_PID"; do
-    if alive "$pf"; then
+  # pidfile → expected command pattern (ownership guard)
+  for entry in "$SERVE_PID:serve.py" "$CF_PID:cloudflared"; do
+    local pf="${entry%:*}" pat="${entry##*:}"
+    if alive "$pf" "$pat"; then
       local pid; pid=$(cat "$pf")
       kill "$pid" 2>/dev/null || true
       # wait up to 5s for graceful exit
