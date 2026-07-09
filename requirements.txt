@@ -1,0 +1,12 @@
+# Runtime dependencies for Daily Hacker News.
+# The tool works with only the stdlib; these packages enable the
+# quality-of-life features:
+#   - feedparser: much more resilient RSS/Atom parsing than xml.etree
+#   - PyYAML:     read configs/feeds.yaml and configs/*.yaml
+#   - deep-translator: EN fallback when a local Ollama isn't available
+#
+# Install with:  pip install -r requirements.txt
+
+PyYAML>=6.0,<7.0
+feedparser>=6.0,<7.0
+deep-translator>=1.11,<2.0

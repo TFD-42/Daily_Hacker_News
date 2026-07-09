@@ -1,0 +1,33 @@
+name: ✨ Feature request
+description: Propose a new capability or refinement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Start from the user pain, not the solution.
+    validations: { required: true }
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should this work? CLI, config, HTML, all three?
+    validations: { required: true }
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you weigh?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Fits the DHN spirit
+      description: Please confirm this proposal fits our lightweight, stdlib-first, security-focused profile
+      options:
+        - label: The change would not require adding a heavy dependency (< 2 MB installed)
+        - label: The change would not require running arbitrary fetched content
+        - label: The change would not break the "serve only whitelisted files" server guarantee

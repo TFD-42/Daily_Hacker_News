@@ -198,18 +198,23 @@ ALL_FEEDS: list[dict] = load_feeds()
 
 THEMES: dict[str, dict] = {
     "Trending":{"icon": "🔥", "title": "Trending Now (multi-source)","color": "#ff4757", "bg": "#2c0808"},
-    "CVE":     {"icon": "🔴", "title": "CVE & Vulnérabilités",      "color": "#e74c3c", "bg": "#2c0f0f"},
+    "CVE":     {"icon": "🔴", "title": "CVE & Vulnerabilities",     "color": "#e74c3c", "bg": "#2c0f0f"},
     "Threat":  {"icon": "🎯", "title": "Threat Intelligence",       "color": "#f39c12", "bg": "#2c1f08"},
     "Exploit": {"icon": "💥", "title": "Exploits & PoC",            "color": "#e67e22", "bg": "#2c1a08"},
     "News-EN": {"icon": "🌐", "title": "Security News (EN)",        "color": "#3498db", "bg": "#0a1a2c"},
-    "News-FR": {"icon": "🇫🇷", "title": "Actualités Sécurité (FR)", "color": "#2ecc71", "bg": "#0a2c10"},
-    "Outils":  {"icon": "🛠",  "title": "Outils & Techniques",      "color": "#9b59b6", "bg": "#1a0a2c"},
+    "News-FR": {"icon": "🇫🇷", "title": "Security News (FR-origin)","color": "#2ecc71", "bg": "#0a2c10"},
+    "News-CN": {"icon": "🇨🇳", "title": "Security News (CN-origin)","color": "#e91e63", "bg": "#2c0a1e"},
+    "Outils":  {"icon": "🛠",  "title": "Tools & Techniques",        "color": "#9b59b6", "bg": "#1a0a2c"},
     "CTF":     {"icon": "🏁", "title": "CTF & Labs",                "color": "#1abc9c", "bg": "#082c28"},
 }
 
-# Trending est calcule, pas fetche : il apparait en tete de journal quand des articles
-# multi-sources se recoupent sur une meme CVE dans la fenetre temporelle.
-THEME_ORDER = ["Trending", "CVE", "Threat", "Exploit", "News-EN", "News-FR", "Outils", "CTF"]
+# Default source language per theme. Non-English themes get their titles and
+# summaries auto-translated to English so the whole journal reads in English.
+THEME_LANG = {"News-FR": "fr", "News-CN": "zh"}
+
+# Trending is computed, not fetched: it appears at the top of the journal when
+# multi-source articles overlap on the same CVE within the time window.
+THEME_ORDER = ["Trending", "CVE", "Threat", "Exploit", "News-EN", "News-FR", "News-CN", "Outils", "CTF"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DATA MODEL
@@ -231,9 +236,11 @@ class Article:
     score:     int      = 0
     cmd:       str      = ""
     summary_fr:str      = ""
-    summary_en:str      = ""   # traduction anglaise (auto, best-effort)
-    weight:    float    = 1.0  # multiplicateur source (>1 = premium)
-    heat:      float    = 0.0  # score de fraicheur / severite / KEV (rempli plus tard)
+    summary_en:str      = ""   # English translation of the summary (auto, best-effort)
+    title_en:  str      = ""   # English translation of the title (auto, best-effort)
+    lang:      str      = "en" # source language (ISO 639-1); drives translation
+    weight:    float    = 1.0  # source multiplier (>1 = premium)
+    heat:      float    = 0.0  # freshness / severity / KEV score (filled later)
 
     @property
     def uid(self) -> str:
@@ -259,13 +266,29 @@ class Article:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def http_get(url: str, timeout: int = 18) -> Optional[bytes]:
+    """Simple bytes fetch. Kept for callers that don't want diagnostics."""
+    body, _ = http_get_verbose(url, timeout=timeout)
+    return body
+
+
+def http_get_verbose(url: str, timeout: int = 18) -> tuple[Optional[bytes], str]:
+    """Fetch + return (body, diag_string). diag empty on success."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": UA,
-              "Accept": "application/rss+xml,application/xml,*/*"})
+              "Accept": "application/rss+xml,application/xml,text/xml,*/*;q=0.9"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read()
-    except Exception:
-        return None
+            body = r.read()
+            ct   = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
+            # HTML page returned when we asked for a feed = dead / redirected
+            if ct.startswith("text/html") and b"<rss" not in body[:512] and b"<feed" not in body[:512]:
+                return body, f"HTML at feed URL ({ct})"
+            return body, ""
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
+    except urllib.error.URLError as e:
+        return None, f"URL: {getattr(e, 'reason', e)}"
+    except Exception as e:
+        return None, f"{type(e).__name__}: {str(e)[:60]}"
 
 
 def _parse_date(s: str) -> Optional[datetime]:
@@ -414,9 +437,17 @@ def parse_gh_md(raw: bytes, label: str, theme: str) -> list[Article]:
 # ── Fetch one feed ────────────────────────────────────────────────────────────
 
 def fetch_feed(feed: dict, cutoff: datetime) -> list[Article]:
-    raw = http_get(feed["url"])
-    if not raw:
-        return []
+    """Backward-compat wrapper: returns list of Article only."""
+    arts, _ = fetch_feed_verbose(feed, cutoff)
+    return arts
+
+
+def fetch_feed_verbose(feed: dict, cutoff: datetime) -> tuple[list[Article], str]:
+    """Fetch one feed and return (articles, diag). diag is empty on success,
+    otherwise carries the HTTP status / parse issue for the summary line."""
+    raw, diag = http_get_verbose(feed["url"])
+    if raw is None:
+        return [], diag or "no body"
     ftype = feed.get("ftype", "rss")
     if ftype == "json_kev":
         arts = parse_kev_json(raw, feed["label"], cutoff)
@@ -424,10 +455,40 @@ def fetch_feed(feed: dict, cutoff: datetime) -> list[Article]:
         arts = parse_gh_md(raw, feed["label"], feed["theme"])
     else:
         arts = parse_rss(raw, feed["label"], feed["theme"], cutoff)
-    w = float(feed.get("weight", 1.0))
+    w    = float(feed.get("weight", 1.0))
+    lang = feed.get("lang") or THEME_LANG.get(feed["theme"], "en")
     for a in arts:
         a.weight = w
-    return arts
+        a.lang   = lang
+    if not arts and not diag:
+        diag = "parsed 0 items (feed empty or out of window)"
+    return arts, diag
+
+
+def verify_feeds(feeds: list[dict], workers: int = 12) -> list[dict]:
+    """Probe every feed URL and return a status list. Diagnostic for the
+    --verify-feeds mode: shows which sources actually respond."""
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)  # wide window
+    out: list[dict] = []
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(fetch_feed_verbose, f, cutoff): f for f in feeds}
+        for fut in as_completed(futs):
+            f = futs[fut]
+            try:
+                arts, diag = fut.result()
+            except Exception as e:
+                arts, diag = [], f"exception: {e}"
+            out.append({
+                "id":       f.get("id"),
+                "label":    f.get("label"),
+                "theme":    f.get("theme"),
+                "url":      f.get("url"),
+                "articles": len(arts),
+                "status":   "ok" if arts else ("dead" if diag and "HTTP" in diag or "URL:" in diag else "quiet"),
+                "diag":     diag or "",
+            })
+    return out
 
 
 # ── Load rss_watcher items (Ollama-enriched) ─────────────────────────────────
@@ -576,7 +637,7 @@ def _save_translation_cache() -> None:
             for k, v in _TR_CACHE.items():
                 f.write(json.dumps({"k": k, "v": v}, ensure_ascii=False) + "\n")
     except Exception as e:
-        print(f"[!] cache traduction non ecrit ({e})", file=sys.stderr)
+        print(f"[!] translation cache not written ({e})", file=sys.stderr)
 
 
 def _ollama_host() -> str:
@@ -725,12 +786,23 @@ def ensure_ollama_ready(auto: bool = False, install_missing: bool = True) -> boo
     return True
 
 
-def _try_ollama(text: str, timeout: int = 20) -> Optional[str]:
-    """Traduit via Ollama local. Utilise ensure_ollama_ready() en amont
-    pour garantir que tout est setup (binaire + daemon + modele)."""
-    host  = _ollama_host()
-    model = _ollama_model()
-    prompt = ("Translate the following text to concise, natural English. "
+LANG_NAMES = {
+    "en": "English",
+    "fr": "French",
+    "es": "Spanish",
+    "de": "German",
+    "zh": "Chinese",
+    "ja": "Japanese",
+}
+
+
+def _try_ollama(text: str, target: str = "en", timeout: int = 20) -> Optional[str]:
+    """Traduit vers `target` via Ollama local. `target` : code ISO 639-1
+    (en/fr/es/de/zh/ja...). Utilise ensure_ollama_ready() en amont."""
+    host   = _ollama_host()
+    model  = _ollama_model()
+    tname  = LANG_NAMES.get(target, target)
+    prompt = (f"Translate the following text to concise, natural {tname}. "
               "Return ONLY the translation, no preamble, no quotes.\n\n" + text)
     body = json.dumps({"model": model, "prompt": prompt, "stream": False,
                        "options": {"temperature": 0.1, "num_predict": 400}}).encode()
@@ -745,44 +817,47 @@ def _try_ollama(text: str, timeout: int = 20) -> Optional[str]:
         return None
 
 
-def _try_deep_translator(text: str) -> Optional[str]:
-    """Traduit via deep_translator (GoogleTranslator, pas de cle API)."""
+def _try_deep_translator(text: str, target: str = "en") -> Optional[str]:
+    """Traduit vers `target` via deep_translator (GoogleTranslator, pas de cle)."""
     try:
         from deep_translator import GoogleTranslator
-        return GoogleTranslator(source="auto", target="en").translate(text[:4900])
+        return GoogleTranslator(source="auto", target=target).translate(text[:4900])
     except Exception:
         return None
 
 
-def translate_to_en(text: str, max_len: int = 900) -> str:
-    """Traduit vers EN avec cache + fallback silencieux.
+def translate(text: str, target: str = "en", max_len: int = 900) -> str:
+    """Traduit vers la langue cible avec cache + fallback silencieux.
+    target : code ISO ("en" par defaut, "fr" pour francais, etc.).
     Retourne "" si aucun backend dispo ou texte vide."""
     global _TR_BACKEND
     text = (text or "").strip()
     if not text:
         return ""
     text = text[:max_len]
-    key  = hashlib.md5(text.encode("utf-8")).hexdigest()
+    key  = hashlib.md5((target + "\x00" + text).encode("utf-8")).hexdigest()
     _load_translation_cache()
     if key in _TR_CACHE:
         return _TR_CACHE[key]
 
-    # essaie dans l'ordre, memorise le premier qui marche pour eviter des
-    # retries inutiles ensuite
     tried = [_TR_BACKEND] if _TR_BACKEND else ["ollama", "deep_translator"]
     for backend in tried + (["ollama", "deep_translator"] if not _TR_BACKEND else []):
         if backend == "ollama":
-            out = _try_ollama(text)
+            out = _try_ollama(text, target=target)
         elif backend == "deep_translator":
-            out = _try_deep_translator(text)
+            out = _try_deep_translator(text, target=target)
         else:
             continue
         if out:
             _TR_BACKEND = backend
             _TR_CACHE[key] = out
             return out
-    # aucun backend
     return ""
+
+
+def translate_to_en(text: str, max_len: int = 900) -> str:
+    """Alias retrocompatible : traduit vers EN."""
+    return translate(text, target="en", max_len=max_len)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -916,14 +991,17 @@ def _build_card(art: Article) -> str:
     if art.score:
         meta_parts.append(f'<span>Pentest {art.score}/10</span>')
 
-    body = ""
-    if art.summary_fr:
-        sfr = art.summary_fr if isinstance(art.summary_fr, str) else " ".join(art.summary_fr)
-        body += f'<div class="cs-fr">🇫🇷 {escape(sfr)}</div>'
+    # English-first: show the English translation when available, otherwise the
+    # native summary (English sources are already English). No dual-language clutter.
     if art.summary_en:
-        body += f'<div class="cs-en">🇬🇧 {escape(art.summary_en)}</div>'
-    if art.summary:
-        body += f'<div class="cs">{escape(art.summary)}</div>'
+        disp_sum = art.summary_en
+    elif art.lang == "en":
+        disp_sum = art.summary
+    else:
+        disp_sum = art.summary or (art.summary_fr if isinstance(art.summary_fr, str) else "")
+    body = ""
+    if disp_sum:
+        body += f'<div class="cs">{escape(disp_sum)}</div>'
     if art.cmd:
         body += f'<div class="ce">$ {escape(art.cmd)}</div>'
 
@@ -934,15 +1012,16 @@ def _build_card(art: Article) -> str:
             f'<span class="ctag">{escape(t)}</span>' for t in all_tags
         ) + '</div>'
 
+    title_disp = art.title_en or art.title
     search_txt = " ".join(filter(None, [
-        art.title, art.source, art.summary,
+        art.title, art.title_en, art.source, art.summary, art.summary_en,
         art.summary_fr if isinstance(art.summary_fr, str) else " ".join(art.summary_fr or []),
         " ".join(art.cves or []), " ".join(art.tags or []),
     ])).lower()
 
     return (
         f'<div class="card" data-s="{escape(search_txt, quote=True)}">'
-        f'<div class="ct">{pills}<a href="{escape(art.url) if str(art.url).startswith(("http://","https://","mailto:")) else "#"}" target="_blank" rel="noopener">{escape(art.title)}</a></div>'
+        f'<div class="ct">{pills}<a href="{escape(art.url) if str(art.url).startswith(("http://","https://","mailto:")) else "#"}" target="_blank" rel="noopener">{escape(title_disp)}</a></div>'
         f'<div class="cm">{"".join(meta_parts)}</div>'
         f'{body}{tags_html}'
         f'</div>'
@@ -1007,16 +1086,16 @@ def render_html(by_theme: dict, args, total: int, n_feeds: int, n_ok: int) -> st
 <body>
 <div class="hdr">
   <h1>🛡 <em>Daily</em> Hacker News</h1>
-  <div class="sub">Veille Sécurité &amp; Pentest — {ds} · {total} articles · {n_ok}/{n_feeds} sources · période {period}</div>
+  <div class="sub">Security &amp; Pentest Watch — {ds} · {total} articles · {n_ok}/{n_feeds} sources · window {period}</div>
   <div class="stats">{stats}</div>
 </div>
 <div class="searchbar"><input id="q" type="search" placeholder="🔎 Rechercher (titre, source, CVE, tag…)" autocomplete="off"></div>
 <div class="toc"><div class="toc-inner">
-  <h2>Navigation rapide</h2>
+  <h2>Quick navigation</h2>
   <div class="toc-links">{toc}</div>
 </div></div>
 <div class="wrap">{sections}</div>
-<div class="foot">Daily Hacker News · généré le {ds} · <a href="secjournal_feeds.opml">OPML</a></div>
+<div class="foot">Daily Hacker News · generated {ds} · <a href="secjournal_feeds.opml">OPML</a></div>
 <script>
 const PER={args.per_page};
 const q=document.getElementById('q');
@@ -1063,12 +1142,14 @@ def render_json(by_theme: dict, args, total: int) -> str:
         for a in arts:
             items.append({
                 "cat":      theme,
-                "title":    a.title,
+                "title":    a.title_en or a.title,
+                "title_orig": a.title,
+                "lang":     a.lang,
                 "url":      a.url,
                 "source":   a.source,
                 "date":     a.date_fmt,
                 "severity": a.severity,
-                "summary":  a.summary[:200] if a.summary else "",
+                "summary":  (a.summary_en or a.summary or "")[:200],
                 "summary_en": (a.summary_en or "")[:200],
                 "summary_fr": (a.summary_fr or "")[:200],
                 "heat":     round(float(a.heat or 0.0), 3),
@@ -1090,11 +1171,13 @@ def render_json(by_theme: dict, args, total: int) -> str:
 
 def _art_to_record(a: Article, theme: str) -> dict:
     return {
-        "uid": a.uid, "cat": theme, "title": a.title, "url": a.url,
+        "uid": a.uid, "cat": theme, "title": a.title_en or a.title,
+        "title_orig": a.title, "lang": a.lang, "url": a.url,
         "source": a.source, "date": a.date_fmt, "published": a.published.isoformat(),
         "severity": a.severity, "summary": (a.summary or "")[:400],
         "summary_fr": (a.summary_fr or "")[:400],
         "summary_en": (a.summary_en or "")[:400],
+        "title_en": (a.title_en or "")[:300],
         "heat": float(a.heat or 0.0),
         "kev": a.kev, "exploit": a.exploit,
         "cves": a.cves[:5], "tags": a.tags[:8],
@@ -1180,7 +1263,7 @@ def render_md(by_theme: dict, args, total: int) -> str:
     lines = [
         f"# 🛡 Daily Hacker News — {now.strftime('%d/%m/%Y')}",
         "",
-        f"> Veille Sécurité & Pentest · {ds} · **{total} articles** · période {period}",
+        f"> Security & Pentest Watch · {ds} · **{total} articles** · window {period}",
         "",
         "## Sommaire",
         "",
@@ -1207,18 +1290,22 @@ def render_md(by_theme: dict, args, total: int) -> str:
             if art.exploit:
                 pills.append("`EXPLOIT`")
             pill_str = " ".join(pills) + " " if pills else ""
-            lines.append(f"### {pill_str}[{art.title}]({art.url})")
+            lines.append(f"### {pill_str}[{art.title_en or art.title}]({art.url})")
             meta = [f"**{art.source}**", art.date_fmt, f"*{art.age_str}*"]
             if art.score:
                 meta.append(f"pentest {art.score}/10")
             if art.cves:
                 meta.append(" ".join(art.cves[:3]))
             lines.append(" · ".join(meta))
-            if art.summary_fr:
-                sfr = art.summary_fr if isinstance(art.summary_fr, str) else " ".join(art.summary_fr)
-                lines.append(f"> 🇫🇷 {sfr}")
-            if art.summary and not art.summary_fr:
-                lines.append(f"> {art.summary}")
+            # English-first summary
+            if art.summary_en:
+                disp = art.summary_en
+            elif art.lang == "en":
+                disp = art.summary
+            else:
+                disp = art.summary or (art.summary_fr if isinstance(art.summary_fr, str) else "")
+            if disp:
+                lines.append(f"> {disp}")
             if art.cmd:
                 lines.append(f"```\n$ {art.cmd}\n```")
             if art.tags:
@@ -1242,7 +1329,7 @@ def c(col, txt): return f"{ANSI.get(col,'')}{txt}{ANSI['reset']}"
 
 
 def print_summary(by_theme: dict) -> None:
-    print(c("bold", "\n═══ Daily Hacker News — Résumé ═══\n"))
+    print(c("bold", "\n═══ Daily Hacker News — Summary ═══\n"))
     for t in THEME_ORDER:
         arts = by_theme.get(t, [])
         if not arts:
@@ -1254,13 +1341,13 @@ def print_summary(by_theme: dict) -> None:
             kev  = c("red"," KEV") if art.kev else ""
             expl = c("yellow"," EXP") if art.exploit else ""
             score= f" {c('cyan',str(art.score)+'/10')}" if art.score else ""
-            title = art.title[:62]
+            title = (art.title_en or art.title)[:62]
             print(f"    {c('grey', art.date_fmt)}  {c('orange',sev)}{kev}{expl}{score}  {title}")
-            if art.summary_fr:
-                sfr = art.summary_fr if isinstance(art.summary_fr, str) else " ".join(art.summary_fr)
-                print(f"    {c('cyan','  → '+sfr[:80])}")
+            gist = art.summary_en or (art.summary if art.lang == "en" else art.summary_fr)
+            if gist:
+                print(f"    {c('cyan','  → '+gist[:80])}")
         if len(arts) > 5:
-            print(f"    {c('grey', f'… +{len(arts)-5} autres')}")
+            print(f"    {c('grey', f'… +{len(arts)-5} more')}")
         print()
 
 
@@ -1309,12 +1396,20 @@ def main() -> None:
                     help="mode recherche : interroge le store et sort du JSON (pour agents/scripts)")
     ap.add_argument("--limit",       type=int, default=50,
                     help="nombre max de résultats pour --search (défaut: 50)")
+    ap.add_argument("--sources",     default="local",
+                    help="csv sources : local,github,gitee,gitlab,huggingface,codeberg "
+                         "(défaut: local). Exemple : --sources local,github,gitee")
+    ap.add_argument("--lang",        default="en", choices=["en","fr","es","de","zh","ja"],
+                    help="langue cible pour la traduction des résultats (défaut: en)")
+    ap.add_argument("--no-translate-results", dest="translate_results",
+                    action="store_false", default=True,
+                    help="ne traduit pas les résultats de --search")
     ap.add_argument("--translate",   dest="translate", action="store_true", default=True,
                     help="auto-traduit les résumés en EN via Ollama/deep_translator (défaut: on)")
     ap.add_argument("--no-translate",dest="translate", action="store_false",
                     help="désactive la traduction EN (plus rapide, moins de trafic)")
-    ap.add_argument("--translate-max", type=int, default=80,
-                    help="max articles traduits par run (défaut: 80 — évite de saturer le backend)")
+    ap.add_argument("--translate-max", type=int, default=200,
+                    help="max articles translated per run (default: 200; results are cached)")
     ap.add_argument("--setup-translate", action="store_true",
                     help="installe Ollama + pull le modèle de traduction puis quitte (setup interactif)")
     ap.add_argument("--auto-install",  action="store_true",
@@ -1323,33 +1418,107 @@ def main() -> None:
                     help="ne jamais proposer d'installer Ollama — fallback direct")
     ap.add_argument("--no-trending", dest="trending", action="store_false", default=True,
                     help="désactive la section Trending Now")
+    ap.add_argument("--verify-feeds", action="store_true",
+                    help="probe chaque feed URL et sort un rapport JSON (dead/quiet/ok)")
     args = ap.parse_args()
 
     if args.setup_translate:
-        print(c("bold", "\n🌐 Setup traduction — Ollama local\n"))
+        print(c("bold", "\n🌐 Translation setup — local Ollama\n"))
         ok = ensure_ollama_ready(auto=args.auto_install, install_missing=not args.no_install)
         if ok:
-            # test rapide
+            # quick self-test (French input to exercise FR→EN)
             out = translate_to_en("Bonjour, ceci est un test de traduction.")
             if out:
-                print(f"  {c('green','✓')} test OK ({_TR_BACKEND}) : {out}")
+                print(f"  {c('green','✓')} test OK ({_TR_BACKEND}): {out}")
             else:
-                print(f"  {c('red','✗')} setup semble OK mais le test de traduction a echoue")
+                print(f"  {c('red','✗')} setup looks OK but the translation test failed")
         else:
-            print(f"  {c('grey','○')} Ollama non setup — le tool utilisera deep_translator ou passera outre")
+            print(f"  {c('grey','○')} Ollama not set up — the tool will use deep_translator or skip")
         return
 
     if args.search:
-        theme = args.themes.split(",")[0].strip() if args.themes.strip() else ""
-        results = search_journal(args.search, limit=args.limit, theme=theme)
-        print(json.dumps({"query": args.search, "count": len(results), "results": results},
-                          ensure_ascii=False, indent=2))
+        theme    = args.themes.split(",")[0].strip() if args.themes.strip() else ""
+        srcs     = [s.strip().lower() for s in args.sources.split(",") if s.strip()]
+        merged: list[dict] = []
+
+        # 1. local store (existing behaviour)
+        if "local" in srcs:
+            for r in search_journal(args.search, limit=args.limit, theme=theme):
+                r.setdefault("source", "local")
+                merged.append(r)
+
+        # 2. external open platforms (opt-in via --sources)
+        external_srcs = [s for s in srcs if s != "local"]
+        if external_srcs:
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parent))
+                from search_external import search_all as _search_ext
+                for r in _search_ext(args.search, external_srcs, limit=args.limit):
+                    merged.append(r)
+            except Exception as e:
+                print(f"[!] search_external failed: {e}", file=sys.stderr)
+
+        # 3. translate results into --lang (best-effort; no-op if backend absent
+        #    or --no-translate-results). Skips items already in the target lang.
+        if args.translate_results and merged:
+            _load_translation_cache()
+            for r in merged:
+                src_lang = (r.get("lang") or "").lower()
+                if src_lang == args.lang:
+                    continue
+                for field in ("title", "description", "summary", "summary_fr"):
+                    v = r.get(field)
+                    if not v or not isinstance(v, str):
+                        continue
+                    translated = translate(v, target=args.lang)
+                    if translated:
+                        r[f"{field}_{args.lang}"] = translated
+            try:
+                _save_translation_cache()
+            except Exception:
+                pass
+
+        print(json.dumps({
+            "query":    args.search,
+            "sources":  srcs,
+            "lang":     args.lang,
+            "count":    len(merged),
+            "results":  merged,
+        }, ensure_ascii=False, indent=2))
         return
 
     if args.export_opml:
         p = OUT_DIR / "secjournal_feeds.opml"
         export_opml(p)
         print(f"{c('green','✓')} OPML → {p}")
+        return
+
+    if args.verify_feeds:
+        report = verify_feeds(ALL_FEEDS, workers=args.workers)
+        # sort: ok first, then quiet, then dead
+        order = {"ok": 0, "quiet": 1, "dead": 2}
+        report.sort(key=lambda r: (order.get(r["status"], 3), r["label"]))
+        n_ok    = sum(1 for r in report if r["status"] == "ok")
+        n_quiet = sum(1 for r in report if r["status"] == "quiet")
+        n_dead  = sum(1 for r in report if r["status"] == "dead")
+        summary = {
+            "total":  len(report),
+            "ok":     n_ok,
+            "quiet":  n_quiet,
+            "dead":   n_dead,
+            "feeds":  report,
+        }
+        # human-readable to stderr, JSON to stdout so it stays pipeable
+        for r in report:
+            mark = {"ok": c('green','✓'), "quiet": c('grey','○'),
+                    "dead": c('red','✗')}.get(r["status"], "?")
+            note = f" · {r['diag']}" if r["diag"] else ""
+            print(f"  {mark} [{r['theme']:<9}] {r['label']:<32} "
+                  f"{r['articles']:>3} arts{note}",
+                  file=sys.stderr)
+        print(f"\n  total={len(report)} ok={n_ok} quiet={n_quiet} dead={n_dead}",
+              file=sys.stderr)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
         return
 
     theme_filter = {t.strip() for t in args.themes.split(",")} if args.themes.strip() else None
@@ -1367,20 +1536,32 @@ def main() -> None:
     all_arts: list[Article] = []
     n_ok = 0
 
+    n_dead = 0
     if not args.no_fetch:
         with ThreadPoolExecutor(max_workers=args.workers) as ex:
-            futures = {ex.submit(fetch_feed, f, cutoff): f for f in feeds}
+            futures = {ex.submit(fetch_feed_verbose, f, cutoff): f for f in feeds}
             for fut in as_completed(futures):
                 feed = futures[fut]
                 try:
-                    arts = fut.result()
-                    mark = c("green","✓") if arts else c("grey","○")
+                    arts, diag = fut.result()
                     if arts:
                         n_ok += 1
+                        mark = c("green","✓")
+                        note = ""
+                    elif diag and ("HTTP" in diag or "URL:" in diag or "URLError" in diag):
+                        n_dead += 1
+                        mark = c("red","✗")
+                        note = f" ← {diag}"
+                    else:
+                        mark = c("grey","○")
+                        note = f" ← {diag}" if diag else ""
                     all_arts.extend(arts)
-                    print(f"  {mark} {feed['label']:<32} {len(arts):>3} articles")
+                    print(f"  {mark} {feed['label']:<32} {len(arts):>3} articles{note}")
                 except Exception as e:
+                    n_dead += 1
                     print(f"  {c('red','✗')} {feed['label']:<32} {e}")
+        if n_dead:
+            print(f"\n{c('bold','⚠')} {n_dead} dead feed(s) — run --verify-feeds for a full audit")
 
     # ── Intégrer rss_watcher items (Ollama-enriched) ──────────────────────────
     rw_arts = load_rss_watcher_items(cutoff)
@@ -1426,40 +1607,61 @@ def main() -> None:
                                         install_missing=not args.no_install)
             if not ready:
                 # message discret, on continue avec deep_translator si dispo
-                print(f"  {c('grey','ℹ')} traduction : fallback deep_translator (Ollama non disponible)")
+                print(f"  {c('grey','ℹ')} translation: falling back to deep_translator (Ollama unavailable)")
 
-        # priorite : Trending > Threat > CVE > Exploit > News-FR (pour anglicisation) > reste
-        priority = ["Trending", "Threat", "CVE", "Exploit", "News-FR", "News-EN", "Outils", "CTF"]
+        # Everything must read in English. Any article whose source language is
+        # not English gets BOTH its title and its summary translated. Foreign
+        # themes first (News-FR / News-CN), then anything else flagged non-EN.
+        priority = ["Trending", "Threat", "CVE", "News-FR", "News-CN",
+                    "Exploit", "News-EN", "Outils", "CTF"]
         candidates: list[Article] = []
         for t in priority:
             for a in by_theme.get(t, []):
-                if not a.summary_en:
-                    src = a.summary_fr or a.summary
-                    if src:
-                        candidates.append(a)
+                if a.lang == "en":
+                    continue  # already English — nothing to translate
+                needs_title = not a.title_en and a.title
+                needs_sum   = not a.summary_en and (a.summary or a.summary_fr)
+                if needs_title or needs_sum:
+                    candidates.append(a)
         candidates = candidates[:args.translate_max]
         if candidates:
-            print(f"{c('cyan','🌐')} traduction EN : {len(candidates)} articles a traiter…")
+            print(f"{c('cyan','🌐')} EN translation: {len(candidates)} articles to process…")
+
+            def _translate_one(a: Article) -> bool:
+                did = False
+                if not a.title_en and a.title:
+                    t_out = translate_to_en(a.title, max_len=300)
+                    if t_out:
+                        a.title_en = t_out
+                        did = True
+                if not a.summary_en:
+                    src = a.summary or a.summary_fr
+                    if src:
+                        s_out = translate_to_en(src)
+                        if s_out:
+                            a.summary_en = s_out
+                            did = True
+                return did
+
+            # Parallel: Ollama/deep_translator are network-bound, so a thread pool
+            # turns a multi-minute sequential run into ~tens of seconds. Results are
+            # cached to disk, so subsequent runs are near-instant.
             n_ok_tr = 0
-            for a in candidates:
-                src = a.summary_fr or a.summary
-                out = translate_to_en(src)
-                if out:
-                    a.summary_en = out
-                    n_ok_tr += 1
-                elif _TR_BACKEND is None:
-                    # aucun backend dispo → arreter tout de suite
-                    print(f"  {c('grey','○')} aucun backend de traduction disponible (Ollama/deep_translator)")
-                    break
+            with ThreadPoolExecutor(max_workers=min(8, max(2, args.workers))) as ex:
+                for did in ex.map(_translate_one, candidates):
+                    if did:
+                        n_ok_tr += 1
             _save_translation_cache()
             if n_ok_tr:
-                print(f"  {c('green','✓')} {n_ok_tr} traductions via {_TR_BACKEND}")
+                print(f"  {c('green','✓')} {n_ok_tr} articles translated via {_TR_BACKEND}")
+            elif _TR_BACKEND is None:
+                print(f"  {c('grey','○')} no translation backend available (Ollama/deep_translator)")
 
     total = sum(len(v) for v in by_theme.values())
-    print(f"\n{c('bold','📊')} {total} articles uniques · {n_ok}/{len(feeds)} sources OK\n")
+    print(f"\n{c('bold','📊')} {total} unique articles · {n_ok}/{len(feeds)} sources OK\n")
 
     n_store = persist_store(by_theme)
-    print(f"{c('cyan','⛁')} store: {n_store} items indexés ({STORE})")
+    print(f"{c('cyan','⛁')} store: {n_store} items indexed ({STORE})")
 
     print_summary(by_theme)
 

@@ -3,8 +3,9 @@
 Aggregates **55 security / pentest / threat-intel** RSS feeds into a single
 searchable HTML report — with a **🔥 Trending Now** section that surfaces
 CVEs cited by multiple sources in the last 24h, per-article **heat scoring**
-(freshness × severity × KEV × source weight), and **auto FR → EN translation**
-of every summary.
+(freshness × severity × KEV × source weight), and **full auto-translation to
+English** — every non-English **title and summary** (French, Chinese, …) is
+rendered in English so the whole journal reads in one language.
 
 Bundled with:
 - 🎯 **Threat Intelligence** feed set (Google Project Zero, TAG, MSRC, Talos,
@@ -22,7 +23,7 @@ Bundled with:
 
 - 🔥 **Gold-now trending detection** — cross-source CVE correlation + fresh KEV pin + top-heat 24h
 - 🌡 **Heat score** per article — `fresh × severity × KEV × exploit × source_weight`, exposed in JSON
-- 🇬🇧 **Auto FR → EN translation** — Ollama first (local, private), then `deep_translator` (Google, no key); silent skip if neither available, JSONL cache to skip re-translations
+- 🇬🇧 **Full English translation** — every non-English **title + summary** (FR, CN, …) is translated so the journal reads entirely in English. Ollama first (local, private), then `deep_translator` (Google, no key); parallelised for speed, JSONL-cached to skip re-translations, silent skip if neither backend is available
 - 🔎 Live search bar (title, source, CVE, tag, summary, EN + FR)
 - 📖 50 items per page × 10 pages of history per theme (500/theme)
 - 🧠 Persistent JSONL store — other agents can query the backlog
@@ -63,6 +64,10 @@ python3 scripts/secjournal.py --no-install                # never prompt to inst
 
 Override the model with `OLLAMA_TRANSLATE_MODEL=<name>` for any Ollama tag.
 
+**Target language**: `--lang fr` translates the search results into French
+instead of English. Any language code supported by your backend works
+(the built-in list covers `en`, `fr`, `es`, `de`, `zh`, `ja`).
+
 ## Usage
 
 ```bash
@@ -81,25 +86,63 @@ Each JSON record shipped to consumers now includes `heat` (float), `summary_en`,
 and `summary_fr` alongside the original `summary` — downstream projects can
 pick the language they need without a second translation pass.
 
-### Search backend (for other agents / scripts)
+### Search backend (multi-source, bilingual)
+
+Query the local store **and** open external platforms in one call, with
+automatic translation of results into English (default) or French.
 
 CLI — JSON on stdout:
 
 ```bash
+# local store only (default)
 python3 scripts/secjournal.py --search "log4j rce" --limit 20
-python3 scripts/secjournal.py --search "kev" --themes CVE
+
+# cross-platform : GitHub + Gitee (Chinese GitHub) + HuggingFace, translated to English
+python3 scripts/secjournal.py --search "web shell" --sources local,github,gitee,huggingface
+
+# same query, translated to French
+python3 scripts/secjournal.py --search "web shell" --sources local,github --lang fr
+
+# skip translation entirely (fastest)
+python3 scripts/secjournal.py --search "cve 2026" --sources github --no-translate-results
 ```
 
-Python — direct import:
+Available `--sources` (comma-separated):
+
+| Source | Auth | Notes |
+|---|---|---|
+| `local` | — | Own JSONL backlog (`knowledge/rss/journal_store.jsonl`) |
+| `github` | optional `GITHUB_TOKEN` | Repos + issues (code search needs a token) |
+| `gitee` | optional `GITEE_TOKEN` | Chinese GitHub. Token strongly recommended (public API mostly returns empty without) |
+| `gitlab` | optional `GITLAB_TOKEN` | gitlab.com public projects |
+| `huggingface` | — | Models + datasets |
+| `codeberg` | — | Public Codeberg (Gitea) repos |
+
+Auto-translation stack: **Ollama local → deep_translator (Google, no key) →
+silently skip**. Chinese sources are detected via CJK codepoints and translated
+even when title/description look "English-ish" mixed.
+
+`--lang` accepts `en` (default), `fr`, `es`, `de`, `zh`, `ja`.
+
+Python — direct imports:
 
 ```python
 import sys; sys.path.insert(0, "scripts")
-from secjournal import search_journal
+from secjournal      import search_journal, translate
+from search_external import search_all
+
+# local
 hits = search_journal("ransomware", limit=30, theme="News-EN")
+
+# GitHub + Gitee
+hits = search_all("apt41 backdoor", ["github", "gitee"], limit=10)
+
+# ad-hoc translation
+fr = translate("Zero-day exploited in the wild", target="fr")
 ```
 
-Search runs against `knowledge/rss/journal_store.jsonl` (auto-populated on each
-run, capped at 5000 items, dedup by URL).
+Local store search runs against `knowledge/rss/journal_store.jsonl`
+(auto-populated on each run, capped at 5000 items, dedup by URL).
 
 ## Configuration
 
@@ -111,6 +154,78 @@ run, capped at 5000 items, dedup by URL).
 - **`configs/pentest_references.yaml`** — 10 curated offensive-security
   references (Command Injection, LOLBins, Upload/Webshells) with per-category
   notes on the most effective techniques.
+
+## Publish over HTTP(S)
+
+A hardened static server is bundled — `scripts/serve.py`, wrapped by
+`serve.sh`. It **only** exposes the generated journal outputs
+(`out/journals/*.html`, `feed.json`, `secjournal_feeds.opml`) and denies
+everything else: source code, configs, knowledge base, dotfiles,
+subdirectories, arbitrary files.
+
+### Quick start
+
+```bash
+./serve.sh                    # foreground, HTTP :8000, bound to 0.0.0.0
+./serve.sh --local            # bind 127.0.0.1 only (dev)
+./serve.sh --tls              # HTTPS (auto-generates a self-signed cert)
+./serve.sh --daemon           # detach + write .serve.pid
+./serve.sh --stop             # graceful stop of the daemon
+./serve.sh --status           # is it running?
+```
+
+Env / flags:
+
+| Option | Default | Purpose |
+|---|---|---|
+| `PORT` / `--port` | `8000` | Listen port |
+| `HOST` / `--host` | `0.0.0.0` | Bind address (`127.0.0.1` for local-only) |
+| `AUTH` / `--auth` | *(off)* | `user:password` for HTTP Basic auth |
+| `ALLOW` / `--allow` | *(any)* | Comma-separated CIDRs (e.g. `10.0.0.0/8`) |
+| `--tls` | off | Enable HTTPS; auto-generates a self-signed cert if missing |
+| `CERT` / `KEY` | `deploy/certs/dhn.{pem,key}` | Custom TLS material |
+
+### Security posture (what's enforced)
+
+- **Strict whitelist**: only `feed.json`, `secjournal_feeds.opml`, and
+  filenames matching `^secjournal_\d{8}_\d{4}\.html$`. Everything else → 404.
+- **`/` serves the newest journal**, always.
+- No directory listing. Subdirectory access → 404.
+- Path canonicalisation via `Path.resolve()` + `relative_to(JOURNAL_DIR)`
+  containment check — defeats `../`, encoded `%2e%2e`, symlink races.
+- `GET` / `HEAD` only. `POST` / `PUT` / `DELETE` / `PATCH` → 405.
+- **Every 2xx** carries `Content-Security-Policy`, `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cache-Control`.
+  HTTPS also gets `Strict-Transport-Security`.
+- Optional per-IP rate limit (default 100 req / 60 s).
+- Optional HTTP Basic auth + IP allowlist (CIDR).
+- Structured JSON access log to stdout + `.access.log`.
+- Modern TLS only: `TLSv1.2+`, ECDHE + AES-GCM / ChaCha20 cipher suite.
+- Zero third-party dependencies — stdlib only.
+
+Verified with an automated test suite: 19 scenarios covering whitelist,
+path traversal (raw + encoded), subdir requests, forbidden methods, auth,
+and IP allowlist — all pass.
+
+### Deploy as a service
+
+macOS (autostart at login, per-user):
+
+```bash
+./serve.sh --install-launchd
+```
+
+Linux (systemd — copy the printed unit into `/etc/systemd/system/`):
+
+```bash
+./serve.sh --install-systemd | sudo tee /etc/systemd/system/dailyhackernews.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now dailyhackernews.service
+```
+
+The generated systemd unit ships hardened defaults: `NoNewPrivileges`,
+`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`,
+empty capability set.
 
 ## Build a native app
 

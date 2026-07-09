@@ -1,0 +1,113 @@
+[build-system]
+requires      = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "daily-hacker-news"
+version         = "0.5.0"
+description     = "Hardened, self-hostable security-intel aggregator with trending detection, auto EN translation, and offline CVE/APT lookup."
+readme          = "README.md"
+license         = { text = "MIT" }
+requires-python = ">=3.9"
+authors         = [{ name = "TFD-42", email = "TFD-42@users.noreply.github.com" }]
+keywords        = ["security", "cve", "threat-intel", "rss", "osint", "aggregator", "cloudflare-tunnel"]
+classifiers     = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: System Administrators",
+  "Intended Audience :: Information Technology",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+  "Topic :: System :: Monitoring",
+]
+# Runtime deps kept intentionally minimal — the tool must work with stdlib only,
+# then progressively enrich when optional deps are present.
+dependencies    = [
+  "PyYAML>=6.0,<7.0",
+]
+
+[project.optional-dependencies]
+enrichment = [
+  "feedparser>=6.0,<7.0",       # better RSS parsing than stdlib xml.etree
+  "deep-translator>=1.11,<2.0", # fallback EN translation when Ollama not present
+]
+build      = [
+  "pyinstaller>=6.0,<7.0",
+  "Pillow>=10.0",               # PNG → .ico on Windows
+]
+dev        = [
+  "pytest>=7.4",
+  "pytest-cov>=4.1",
+  "ruff>=0.1.0",
+  "black>=23.0",
+  "mypy>=1.5",
+]
+
+[project.scripts]
+dhn         = "scripts.secjournal:main"
+dhn-serve   = "scripts.serve:main"
+dhn-tunnel  = "scripts.tunnel:main"   # reserved for the packaged wrapper
+
+[project.urls]
+Homepage      = "https://github.com/TFD-42/Daily_Hacker_News"
+Repository    = "https://github.com/TFD-42/Daily_Hacker_News"
+Issues        = "https://github.com/TFD-42/Daily_Hacker_News/issues"
+Changelog     = "https://github.com/TFD-42/Daily_Hacker_News/blob/main/CHANGELOG.md"
+
+# ── setuptools ────────────────────────────────────────────────────────────────
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["scripts*"]
+exclude = ["tests*", "_build_tmp*", "out*", "knowledge*", "deploy*"]
+
+[tool.setuptools.package-data]
+"scripts" = ["../configs/*.yaml"]
+
+# ── pytest ────────────────────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+minversion   = "7.0"
+testpaths    = ["tests"]
+python_files = ["test_*.py"]
+addopts      = "-ra --strict-markers --color=yes"
+markers      = [
+  "network: tests that hit the real network (skipped by default in CI)",
+  "slow:    tests slower than 1s",
+]
+
+[tool.coverage.run]
+source = ["scripts"]
+omit   = ["tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+]
+
+# ── ruff ──────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+line-length    = 100
+target-version = "py39"
+exclude        = ["_build_tmp", "out", "knowledge", "deploy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]   # line-length handled by black
+
+[tool.black]
+line-length    = 100
+target-version = ["py39", "py310", "py311", "py312"]

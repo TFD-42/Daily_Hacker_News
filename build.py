@@ -138,13 +138,25 @@ def build_macos():
 
     # Launcher : ouvre Terminal.app et exécute le binaire
     launcher = macos_dir / "DailyHackerNews"
+    # First run (no journal yet) uses --days 7 for a richer initial view;
+    # subsequent runs use --days 3 which stays lively without duplicating too
+    # much between daily launches. The .app already defaults to auto-open so
+    # the HTML shows up in the browser as soon as it's ready.
     launcher.write_text(textwrap.dedent("""\
         #!/bin/bash
-        BIN="$(cd "$(dirname "$0")" && pwd)/DailyHackerNews_bin"
+        DIR="$(cd "$(dirname "$0")" && pwd)"
+        BIN="$DIR/DailyHackerNews_bin"
+        # Look for an existing journal — if none, seed with a wider window
+        PROJECT_ROOT="$(cd "$DIR/../../.." && pwd)"
+        JOURNAL_DIR="$PROJECT_ROOT/out/journals"
+        DAYS=3
+        if ! ls "$JOURNAL_DIR"/secjournal_*.html >/dev/null 2>&1; then
+          DAYS=7
+        fi
         osascript \\
           -e 'tell application "Terminal"' \\
           -e 'activate' \\
-          -e "do script \\"'$BIN'\\"" \\
+          -e "do script \\"'$BIN' --days $DAYS\\"" \\
           -e 'end tell'
     """))
     launcher.chmod(0o755)
@@ -200,6 +212,83 @@ def build_windows():
 
 
 # ── Linux ─────────────────────────────────────────────────────────────────────
+
+def is_termux() -> bool:
+    """Detect Android/Termux runtime."""
+    return (
+        "com.termux" in os.environ.get("PREFIX", "")
+        or Path("/data/data/com.termux").exists()
+        or os.environ.get("TERMUX_VERSION") is not None
+    )
+
+
+def build_termux():
+    """Install-and-run flow for Android via Termux.
+
+    Termux ships a real Python but not necessarily PyInstaller-compatible
+    libc, so we skip freezing and instead:
+      1. Install runtime deps (python, git, feedparser, pyyaml).
+      2. Wire a `dhn` launcher shell script into ~/bin (or $PREFIX/bin).
+      3. Report how to run and how to serve the journal.
+    """
+    print("[*] Cible : Android / Termux → runtime install (pas de freeze)")
+
+    PREFIX = Path(os.environ.get("PREFIX", "/data/data/com.termux/files/usr"))
+    HOME   = Path(os.environ.get("HOME", str(Path.home())))
+
+    print("[*] Mise a jour de pkg…")
+    subprocess.run(["pkg", "update", "-y"],  check=False)
+    subprocess.run(["pkg", "upgrade", "-y"], check=False)
+
+    pkgs = ["python", "git", "openssl", "libxml2", "libxslt",
+            "curl", "termux-api"]
+    print(f"[*] Installation des paquets : {' '.join(pkgs)}")
+    subprocess.run(["pkg", "install", "-y", *pkgs], check=False)
+
+    print("[*] pip : feedparser + pyyaml + deep-translator")
+    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+                   check=False)
+    for pkg in ("feedparser", "pyyaml", "deep-translator"):
+        subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=False)
+
+    # ~/bin/dhn launcher
+    bin_dir = HOME / ".local" / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    launcher = bin_dir / "dhn"
+    launcher.write_text(textwrap.dedent(f"""\
+        #!/data/data/com.termux/files/usr/bin/bash
+        # Daily Hacker News — Termux launcher
+        cd "{ROOT}"
+        exec {sys.executable} scripts/secjournal.py "$@"
+    """))
+    launcher.chmod(0o755)
+
+    # cheap desktop-widget shortcut for Termux:Widget if installed
+    widget = HOME / ".shortcuts" / "DailyHackerNews"
+    widget.parent.mkdir(parents=True, exist_ok=True)
+    widget.write_text(textwrap.dedent(f"""\
+        #!/data/data/com.termux/files/usr/bin/bash
+        cd "{ROOT}"
+        {sys.executable} scripts/secjournal.py --open || true
+    """))
+    widget.chmod(0o755)
+
+    print()
+    print(f"[✓] launcher installe : {launcher}")
+    print(f"[✓] shortcut Termux:Widget : {widget}")
+    print()
+    print("  Utilisation :")
+    print("    dhn                              # journal 24h")
+    print("    dhn --days 7 --output both       # semaine, HTML+MD")
+    print("    dhn --search 'log4j' --sources github,gitee --lang en")
+    print()
+    print("  Pour publier via Cloudflare Tunnel depuis Termux :")
+    print("    pkg install cloudflared")
+    print("    bash build2.sh --daemon")
+    print()
+    print("  Si 'dhn' n'est pas trouve, ajoute a ton ~/.bashrc :")
+    print("    export PATH=\"$HOME/.local/bin:$PATH\"")
+
 
 def build_linux():
     print("[*] Cible : Linux → DailyHackerNews")
@@ -257,6 +346,13 @@ def main():
 
     if not SCRIPT.exists():
         sys.exit(f"[!] Script introuvable : {SCRIPT}")
+
+    # Android/Termux : traite en tout premier, il tourne sur un OS Linux
+    # mais son toolchain interdit PyInstaller / .desktop / iconutil.
+    if is_termux():
+        print("[*] Environnement Termux détecté (Android)")
+        build_termux()
+        return
 
     TMP.mkdir(parents=True, exist_ok=True)
     ensure_pyinstaller()

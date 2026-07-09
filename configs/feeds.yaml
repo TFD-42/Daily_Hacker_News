@@ -1,277 +1,245 @@
 version: 1
 description: >
-  Sources RSS/feeds agrégées par SecJournal. Éditez ce fichier pour
-  ajouter, retirer ou désactiver un flux — AUCUNE recompilation nécessaire.
-  Repli sur la liste intégrée si ce fichier est absent ou invalide.
+  Sources RSS/feeds agrégées par SecJournal / Daily Hacker News. Éditez ce
+  fichier pour ajouter, retirer ou désactiver un flux — AUCUNE recompilation
+  nécessaire. Repli sur la liste intégrée si ce fichier est absent ou invalide.
 
 # Champs : id (unique) · label · theme · url · [ftype] · [enabled: false] · [weight: 1.0]
-# theme ∈ CVE, Exploit, Threat, News-EN, News-FR, Outils, CTF
+# theme  ∈ CVE, Exploit, Threat, News-EN, News-FR, News-CN, Outils, CTF
 # weight : multiplicateur de score de fraicheur (>1 = source premium temps reel)
+# ftype  : "rss" (défaut), "json_kev" (CISA KEV format), "gh_md" (parse a GitHub README)
+#
+# Diagnostic : `python3 scripts/secjournal.py --verify-feeds` probe chaque URL
+# et classe les feeds en ok / quiet / dead. Utilise-le après avoir édité.
 
 feeds:
-  # ── CVE & Vulnérabilités ──
-  - id:    "nvd-rss"
-    label: "NVD (NIST)"
-    theme: "CVE"
-    url:   "https://nvd.nist.gov/feeds/xml/cve/misc/nvd-rss.xml"
-  - id:    "cvefeed-high"
-    label: "CVEFeed HIGH/CRIT"
-    theme: "CVE"
-    url:   "https://cvefeed.io/rssfeed/severity/high.xml"
-  - id:    "cvefeed-latest"
-    label: "CVEFeed Latest"
-    theme: "CVE"
-    url:   "https://cvefeed.io/rssfeed/latest.xml"
-  - id:    "cvealert"
-    label: "CVE Alert"
-    theme: "CVE"
-    url:   "https://cvealert.net/feeds/rss2/"
-  - id:    "cert-fr"
-    label: "CERT-FR (ANSSI)"
-    theme: "CVE"
-    url:   "https://www.cert.ssi.gouv.fr/feed/"
-  - id:    "cisa-kev"
-    label: "CISA KEV"
-    theme: "CVE"
-    url:   "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
-    ftype: "json_kev"
-  - id:    "opencve"
-    label: "OpenCVE"
-    theme: "CVE"
-    url:   "https://www.opencve.io/cve?format=rss"
-  - id:    "cvedetails"
-    label: "CVEDetails"
-    theme: "CVE"
-    url:   "https://www.cvedetails.com/feeds/latest/"
-
-  # ── Exploits & PoC ──
-  - id:    "exploitdb"
-    label: "Exploit-DB"
-    theme: "Exploit"
-    url:   "https://www.exploit-db.com/rss.xml"
-  - id:    "packetstorm"
-    label: "Packet Storm"
-    theme: "Exploit"
-    url:   "https://packetstormsecurity.com/feeds"
-  - id:    "full-disc"
-    label: "Full Disclosure"
-    theme: "Exploit"
-    url:   "https://seclists.org/rss/fulldisclosure.rss"
-  - id:    "sploitus"
-    label: "Sploitus"
-    theme: "Exploit"
-    url:   "https://sploitus.com/feeds/"
-  - id:    "trickest-cve"
-    label: "Trickest CVE PoC"
-    theme: "Exploit"
-    url:   "https://raw.githubusercontent.com/trickest/cve/main/README.md"
-    ftype: "gh_md"
-  - id:    "vulhub"
-    label: "Vulhub PoC"
-    theme: "Exploit"
-    url:   "https://raw.githubusercontent.com/vulhub/vulhub/master/README.md"
-    ftype: "gh_md"
-
-  # ── Security News (EN) ──
-  - id:    "krebs"
-    label: "Krebs on Security"
-    theme: "News-EN"
-    url:   "https://krebsonsecurity.com/feed/"
-  - id:    "hackernews"
-    label: "The Hacker News"
-    theme: "News-EN"
-    url:   "https://feeds.feedburner.com/TheHackersNews"
-  - id:    "bleeping"
-    label: "Bleeping Computer"
-    theme: "News-EN"
-    url:   "https://www.bleepingcomputer.com/feed/"
-  - id:    "rapid7"
-    label: "Rapid7 Blog"
-    theme: "News-EN"
-    url:   "https://www.rapid7.com/blog/rss/"
-  - id:    "portswigger"
-    label: "PortSwigger Daily"
-    theme: "News-EN"
-    url:   "https://portswigger.net/daily-swig/rss"
-  - id:    "schneier"
-    label: "Schneier on Security"
-    theme: "News-EN"
-    url:   "https://www.schneier.com/feed/atom/"
-  - id:    "darkreading"
-    label: "Dark Reading"
-    theme: "News-EN"
-    url:   "https://www.darkreading.com/rss.xml"
-  - id:    "sans-isc"
-    label: "SANS ISC Diary"
-    theme: "News-EN"
-    url:   "https://isc.sans.edu/rssfeed.xml"
-  - id:    "securityweek"
-    label: "SecurityWeek"
-    theme: "News-EN"
-    url:   "https://www.securityweek.com/feed/"
-  - id:    "threatpost"
-    label: "Threatpost"
-    theme: "News-EN"
-    url:   "https://threatpost.com/feed/"
-  - id:    "specterops"
-    label: "SpecterOps"
-    theme: "News-EN"
-    url:   "https://posts.specterops.io/feed"
-
-  # ── Actualités Sécurité (FR) ──
-  - id:    "zataz"
-    label: "ZATAZ"
-    theme: "News-FR"
-    url:   "https://www.zataz.com/feed/"
-  - id:    "korben"
-    label: "Korben"
-    theme: "News-FR"
-    url:   "https://korben.info/feed"
-  - id:    "it-connect"
-    label: "IT-Connect Sécurité"
-    theme: "News-FR"
-    url:   "https://www.it-connect.fr/category/securite/feed/"
-  - id:    "lemagit"
-    label: "LeMagIT Sécurité"
-    theme: "News-FR"
-    url:   "https://www.lemagit.fr/rss/Securite"
-
-  # ── Outils & Techniques ──
-  - id:    "hackingarticles"
-    label: "Hacking Articles"
-    theme: "Outils"
-    url:   "https://www.hackingarticles.in/feed/"
-  - id:    "pentestlab"
-    label: "Pentestlab Blog"
-    theme: "Outils"
-    url:   "https://pentestlab.blog/feed/"
-  - id:    "harmj0y"
-    label: "harmj0y"
-    theme: "Outils"
-    url:   "https://blog.harmj0y.net/feed/"
-  - id:    "offsec"
-    label: "OffSec Blog"
-    theme: "Outils"
-    url:   "https://www.offensive-security.com/feed/"
-
-  # ── CTF & Labs ──
-  - id:    "0xdf"
-    label: "0xdf Writeups"
-    theme: "CTF"
-    url:   "https://0xdf.gitlab.io/feed.xml"
-  - id:    "ctftime"
-    label: "CTFtime Events"
-    theme: "CTF"
-    url:   "https://ctftime.org/event/list/upcoming/rss/"
-  - id:    "root-me"
-    label: "Root-Me"
-    theme: "CTF"
-    url:   "https://www.root-me.org/spip.php?page=backend"
-
-
-  # ══════════════════════════════════════════════════════════════
-  # GOLD NOW — sources temps reel, threat intel, innovations
-  # ══════════════════════════════════════════════════════════════
-
-  # ── Threat Intelligence (recherche APT / campagnes actives) ──
-  - id:    "google-project-zero"
-    label: "Google Project Zero"
-    theme: "Threat"
-    url:   "https://googleprojectzero.blogspot.com/feeds/posts/default"
-    weight: 2.0
-  - id:    "google-tag"
-    label: "Google TAG"
-    theme: "Threat"
-    url:   "https://blog.google/threat-analysis-group/rss/"
-    weight: 2.0
-  - id:    "msrc"
-    label: "Microsoft MSRC"
-    theme: "Threat"
-    url:   "https://msrc.microsoft.com/blog/feed"
-    weight: 1.8
-  - id:    "talos"
-    label: "Cisco Talos"
-    theme: "Threat"
-    url:   "https://blog.talosintelligence.com/rss/"
-    weight: 1.8
-  - id:    "unit42"
-    label: "Palo Alto Unit42"
-    theme: "Threat"
-    url:   "https://unit42.paloaltonetworks.com/feed/"
-    weight: 1.8
-  - id:    "malwarebytes-labs"
-    label: "Malwarebytes Labs"
-    theme: "Threat"
-    url:   "https://www.malwarebytes.com/blog/feed/index.xml"
-    weight: 1.5
-  - id:    "sentinellabs"
-    label: "SentinelLabs"
-    theme: "Threat"
-    url:   "https://www.sentinelone.com/labs/feed/"
-    weight: 1.7
-  - id:    "welivesecurity"
-    label: "ESET WeLiveSecurity"
-    theme: "Threat"
-    url:   "https://www.welivesecurity.com/feed/"
-    weight: 1.5
-  - id:    "sophos"
-    label: "Sophos News"
-    theme: "Threat"
-    url:   "https://news.sophos.com/en-us/feed/"
-    weight: 1.4
-  - id:    "trendmicro-research"
-    label: "Trend Micro Research"
-    theme: "Threat"
-    url:   "https://feeds.trendmicro.com/TrendMicroResearch"
-    weight: 1.5
-  - id:    "kaspersky-securelist"
-    label: "Kaspersky Securelist"
-    theme: "Threat"
-    url:   "https://securelist.com/feed/"
-    weight: 1.5
-  - id:    "volexity"
-    label: "Volexity"
-    theme: "Threat"
-    url:   "https://www.volexity.com/blog/feed/"
-    weight: 1.7
-  - id:    "google-security"
-    label: "Google Security Blog"
-    theme: "Threat"
-    url:   "https://feeds.feedburner.com/GoogleOnlineSecurityBlog"
-    weight: 1.5
-
-  # ── CVE gold: ZDI advisories, Vulmon ──
-  - id:    "zdi-published"
-    label: "Zero Day Initiative"
-    theme: "CVE"
-    url:   "https://www.zerodayinitiative.com/rss/published/"
-    weight: 2.0
-  - id:    "vulmon-recent"
-    label: "Vulmon Recent"
-    theme: "CVE"
-    url:   "https://vulmon.com/vulnerabilityfeed?type=recent"
-    weight: 1.3
-
-  # ── Communaute temps reel (Reddit) ──
-  - id:    "reddit-netsec"
-    label: "r/netsec"
-    theme: "News-EN"
-    url:   "https://www.reddit.com/r/netsec/.rss"
-    weight: 1.5
-  - id:    "reddit-asknetsec"
-    label: "r/AskNetsec"
-    theme: "News-EN"
-    url:   "https://www.reddit.com/r/AskNetsec/.rss"
-    weight: 1.2
-  - id:    "reddit-blueteamsec"
-    label: "r/blueteamsec"
-    theme: "News-EN"
-    url:   "https://www.reddit.com/r/blueteamsec/.rss"
-    weight: 1.3
-
-  # ── Bug bounty / disclosures publiques ──
-  - id:    "hackerone-hacktivity"
-    label: "HackerOne Hacktivity"
-    theme: "Exploit"
-    url:   "https://hackerone.com/hacktivity.rss"
-    weight: 1.8
+- id: cvefeed-high
+  label: CVEFeed HIGH/CRIT
+  theme: CVE
+  url: https://cvefeed.io/rssfeed/severity/high.xml
+- id: cvefeed-latest
+  label: CVEFeed Latest
+  theme: CVE
+  url: https://cvefeed.io/rssfeed/latest.xml
+- id: cert-fr
+  label: CERT-FR (ANSSI)
+  theme: CVE
+  lang: fr
+  url: https://www.cert.ssi.gouv.fr/feed/
+- id: cisa-kev
+  label: CISA KEV
+  theme: CVE
+  url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+  ftype: json_kev
+- id: opencve
+  label: OpenCVE
+  theme: CVE
+  url: https://app.opencve.io/cve/?format=rss
+- id: cvedetails
+  label: CVEDetails
+  theme: CVE
+  url: https://www.cvedetails.com/rss-feeds.php
+- id: exploitdb
+  label: Exploit-DB
+  theme: Exploit
+  url: https://www.exploit-db.com/rss.xml
+- id: packetstorm
+  label: Packet Storm
+  theme: Exploit
+  url: https://rss.packetstormsecurity.com/
+- id: full-disc
+  label: Full Disclosure
+  theme: Exploit
+  url: https://seclists.org/rss/fulldisclosure.rss
+- id: trickest-cve
+  label: Trickest CVE PoC
+  theme: Exploit
+  url: https://raw.githubusercontent.com/trickest/cve/main/README.md
+  ftype: gh_md
+- id: vulhub
+  label: Vulhub PoC
+  theme: Exploit
+  url: https://raw.githubusercontent.com/vulhub/vulhub/master/README.md
+  ftype: gh_md
+- id: krebs
+  label: Krebs on Security
+  theme: News-EN
+  url: https://krebsonsecurity.com/feed/
+- id: hackernews
+  label: The Hacker News
+  theme: News-EN
+  url: https://feeds.feedburner.com/TheHackersNews
+- id: bleeping
+  label: Bleeping Computer
+  theme: News-EN
+  url: https://www.bleepingcomputer.com/feed/
+- id: rapid7
+  label: Rapid7 Blog
+  theme: News-EN
+  url: https://www.rapid7.com/blog/rss/
+- id: portswigger
+  label: PortSwigger Daily
+  theme: News-EN
+  url: https://portswigger.net/blog/rss
+- id: schneier
+  label: Schneier on Security
+  theme: News-EN
+  url: https://www.schneier.com/feed/atom/
+- id: darkreading
+  label: Dark Reading
+  theme: News-EN
+  url: https://www.darkreading.com/rss.xml
+- id: sans-isc
+  label: SANS ISC Diary
+  theme: News-EN
+  url: https://isc.sans.edu/rssfeed.xml
+- id: securityweek
+  label: SecurityWeek
+  theme: News-EN
+  url: https://www.securityweek.com/feed/
+- id: zataz
+  label: ZATAZ
+  theme: News-FR
+  url: https://www.zataz.com/feed/
+- id: korben
+  label: Korben
+  theme: News-FR
+  url: https://korben.info/feed
+- id: it-connect
+  label: IT-Connect Sécurité
+  theme: News-FR
+  url: https://www.it-connect.fr/category/securite/feed/
+- id: hackingarticles
+  label: Hacking Articles
+  theme: Outils
+  url: https://www.hackingarticles.in/feed/
+- id: pentestlab
+  label: Pentestlab Blog
+  theme: Outils
+  url: https://pentestlab.blog/feed/
+- id: offsec
+  label: OffSec Blog
+  theme: Outils
+  url: https://www.offensive-security.com/feed/
+- id: '0xdf'
+  label: 0xdf Writeups
+  theme: CTF
+  url: https://0xdf.gitlab.io/feed.xml
+- id: ctftime
+  label: CTFtime Events
+  theme: CTF
+  url: https://ctftime.org/event/list/upcoming/rss/
+- id: root-me
+  label: Root-Me
+  theme: CTF
+  url: https://www.root-me.org/spip.php?page=backend&lang=fr
+- id: google-project-zero
+  label: Google Project Zero
+  theme: Threat
+  url: https://googleprojectzero.blogspot.com/feeds/posts/default
+  weight: 2.0
+- id: msrc
+  label: Microsoft MSRC
+  theme: Threat
+  url: https://msrc.microsoft.com/blog/feed
+  weight: 1.8
+- id: talos
+  label: Cisco Talos
+  theme: Threat
+  url: https://blog.talosintelligence.com/rss/
+  weight: 1.8
+- id: unit42
+  label: Palo Alto Unit42
+  theme: Threat
+  url: https://unit42.paloaltonetworks.com/feed/
+  weight: 1.8
+- id: malwarebytes-labs
+  label: Malwarebytes Labs
+  theme: Threat
+  url: https://www.malwarebytes.com/blog/feed/index.xml
+  weight: 1.5
+- id: sentinellabs
+  label: SentinelLabs
+  theme: Threat
+  url: https://www.sentinelone.com/labs/feed/
+  weight: 1.7
+- id: welivesecurity
+  label: ESET WeLiveSecurity
+  theme: Threat
+  url: https://www.welivesecurity.com/feed/
+  weight: 1.5
+- id: sophos
+  label: Sophos News
+  theme: Threat
+  url: https://news.sophos.com/en-us/feed/
+  weight: 1.4
+- id: kaspersky-securelist
+  label: Kaspersky Securelist
+  theme: Threat
+  url: https://securelist.com/feed/
+  weight: 1.5
+- id: volexity
+  label: Volexity
+  theme: Threat
+  url: https://www.volexity.com/feed/
+  weight: 1.7
+- id: google-security
+  label: Google Security Blog
+  theme: Threat
+  url: https://feeds.feedburner.com/GoogleOnlineSecurityBlog
+  weight: 1.5
+- id: zdi-published
+  label: Zero Day Initiative
+  theme: CVE
+  url: https://www.zerodayinitiative.com/rss/published/
+  weight: 2.0
+- id: vulmon-recent
+  label: Vulmon Recent
+  theme: CVE
+  url: https://vulmon.com/vulnerabilityfeed?type=recent
+  weight: 1.3
+- id: reddit-netsec
+  label: r/netsec
+  theme: News-EN
+  url: https://www.reddit.com/r/netsec/.rss
+  weight: 1.5
+- id: reddit-asknetsec
+  label: r/AskNetsec
+  theme: News-EN
+  url: https://www.reddit.com/r/AskNetsec/.rss
+  weight: 1.2
+- id: reddit-blueteamsec
+  label: r/blueteamsec
+  theme: News-EN
+  url: https://www.reddit.com/r/blueteamsec/.rss
+  weight: 1.3
+- id: hackerone-hacktivity
+  label: HackerOne Hacktivity
+  theme: Exploit
+  url: https://hackerone.com/hacktivity.rss
+  weight: 1.8
+- id: freebuf
+  label: FreeBuf 互联网安全新媒体
+  theme: News-CN
+  url: https://www.freebuf.com/feed
+  weight: 1.5
+- id: anquanke
+  label: 安全客 Anquanke
+  theme: News-CN
+  url: https://api.anquanke.com/data/v1/rss
+  weight: 1.5
+- id: xz-aliyun
+  label: 先知社区 XZ (Alibaba)
+  theme: News-CN
+  url: https://xz.aliyun.com/feed
+  weight: 1.6
+- id: sec-wiki
+  label: SecWiki 安全维基
+  theme: News-CN
+  url: https://www.sec-wiki.com/news.xml
+  weight: 1.3
+- id: seebug-blog
+  label: Seebug Paper (知道创宇)
+  theme: News-CN
+  url: https://paper.seebug.org/rss/
+  weight: 1.7

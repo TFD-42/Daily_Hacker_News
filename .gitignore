@@ -31,3 +31,17 @@ Thumbs.db
 .env
 .env.local
 configs/*.local.yaml
+
+# Server runtime
+.serve.pid
+.serve.log
+.access.log
+deploy/certs/
+knowledge/rss/translation_cache.jsonl
+
+# build2.sh runtime
+.build2_serve.pid
+.build2_cf.pid
+.build2_serve.log
+.build2_cf.log
+.build2_url.txt
