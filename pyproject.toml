@@ -31,6 +31,9 @@ classifiers     = [
 # then progressively enrich when optional deps are present.
 dependencies    = [
   "PyYAML>=6.0,<7.0",
+  "requests>=2.31.0",
+  "beautifulsoup4>=4.12.0",
+  "urllib3>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -54,6 +57,7 @@ dev        = [
 dhn         = "scripts.secjournal:main"
 dhn-serve   = "scripts.serve:main"
 dhn-tunnel  = "scripts.tunnel:main"   # reserved for the packaged wrapper
+form-extractor = "form_extractor.cli:main"
 
 [project.urls]
 Homepage      = "https://github.com/TFD-42/Daily_Hacker_News"
@@ -68,7 +72,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where   = ["."]
-include = ["scripts*"]
+include = ["scripts*", "form_extractor*"]
 exclude = ["tests*", "_build_tmp*", "out*", "knowledge*", "deploy*"]
 
 [tool.setuptools.package-data]

@@ -4,9 +4,14 @@
 #   - feedparser: much more resilient RSS/Atom parsing than xml.etree
 #   - PyYAML:     read configs/feeds.yaml and configs/*.yaml
 #   - deep-translator: EN fallback when a local Ollama isn't available
+#   - requests: HTTP client for form extraction
+#   - beautifulsoup4: HTML parsing for form extraction
 #
 # Install with:  pip install -r requirements.txt
 
 PyYAML>=6.0,<7.0
 feedparser>=6.0,<7.0
 deep-translator>=1.11,<2.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+urllib3>=2.0.0
